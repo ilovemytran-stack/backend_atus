@@ -40,6 +40,9 @@ router.post('/login', async (req, res) => {
     if (!user || !(await user.matchPassword(password)))
       return res.status(401).json({ success: false, message: 'Email hoặc mật khẩu không đúng' });
 
+    if (user.isBanned)
+      return res.status(403).json({ success: false, message: `Tài khoản của bạn đã bị khóa${user.banReason ? ': ' + user.banReason : ''}.` });
+
     user.isOnline = true;
     await user.save({ validateBeforeSave: false });
     sendTokens(user, res);
