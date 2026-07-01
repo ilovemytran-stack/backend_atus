@@ -36,6 +36,7 @@ app.use('/api/feed', require('./routes/feed'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/search', require('./routes/search'));
+app.use('/api/admin', require('./routes/admin'));
 
 // Health check
 app.get('/health', (_, res) => res.json({ status: 'ok', time: new Date() }));
