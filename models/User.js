@@ -25,6 +25,8 @@ const userSchema = new mongoose.Schema({
   passwordResetExpire: Date,
   refreshToken: String,
   role: { type: String, enum: ['user', 'admin'], default: 'user' },
+  isBanned: { type: Boolean, default: false },
+  banReason: { type: String, default: '' },
 }, { timestamps: true });
 
 userSchema.pre('save', async function(next) {
