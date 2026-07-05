@@ -5,11 +5,15 @@ const Video = require('../models/Video');
 const { protect } = require('../middleware/auth');
 
 const adminOnly = (req, res, next) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Chỉ admin mới có quyền truy cập' });
+  if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Chỉ admin mới có quyền thao tác này' });
+  next();
+};
+const staffOnly = (req, res, next) => {
+  if (!['admin', 'moderator'].includes(req.user.role)) return res.status(403).json({ success: false, message: 'Chỉ admin/điều hành mới có quyền truy cập' });
   next();
 };
 
-router.use(protect, adminOnly);
+router.use(protect, staffOnly);
 
 // ===== STATS =====
 router.get('/stats', async (req, res) => {
@@ -51,6 +55,9 @@ router.delete('/users/:id', async (req, res) => {
     if (req.params.id === String(req.user._id)) return res.status(400).json({ success: false, message: 'Không thể tự xóa chính mình' });
     const target = await User.findById(req.params.id);
     if (!target) return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
+    if (req.user.role !== 'admin' && ['admin', 'moderator'].includes(target.role)) {
+      return res.status(403).json({ success: false, message: 'Điều hành không thể xóa tài khoản admin hoặc điều hành khác' });
+    }
     await Promise.all([
       User.findByIdAndDelete(req.params.id),
       Post.deleteMany({ author: req.params.id }),
@@ -62,10 +69,10 @@ router.delete('/users/:id', async (req, res) => {
   }
 });
 
-router.put('/users/:id/role', async (req, res) => {
+router.put('/users/:id/role', adminOnly, async (req, res) => {
   try {
     const { role } = req.body;
-    if (!['user', 'admin'].includes(role)) return res.status(400).json({ success: false, message: 'Role không hợp lệ' });
+    if (!['user', 'moderator', 'admin'].includes(role)) return res.status(400).json({ success: false, message: 'Role không hợp lệ' });
     if (req.params.id === String(req.user._id) && role !== 'admin') {
       return res.status(400).json({ success: false, message: 'Không thể tự hạ quyền chính mình' });
     }
@@ -77,9 +84,30 @@ router.put('/users/:id/role', async (req, res) => {
   }
 });
 
+// Tăng/giảm Xu VIP cho user — CHỈ ADMIN, điều hành không có quyền này
+router.put('/users/:id/coin', adminOnly, async (req, res) => {
+  try {
+    const { amount } = req.body; // số dương = cộng, số âm = trừ
+    const delta = Number(amount);
+    if (!delta || Number.isNaN(delta)) return res.status(400).json({ success: false, message: 'Số xu không hợp lệ' });
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
+    target.vipCoin = Math.max(0, (target.vipCoin || 0) + delta);
+    await target.save();
+    res.json({ success: true, vipCoin: target.vipCoin, message: `Đã ${delta > 0 ? 'cộng' : 'trừ'} ${Math.abs(delta)} Xu VIP cho ${target.username}` });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 router.put('/users/:id/ban', async (req, res) => {
   try {
     if (req.params.id === String(req.user._id)) return res.status(400).json({ success: false, message: 'Không thể tự khóa chính mình' });
+    const targetCheck = await User.findById(req.params.id);
+    if (!targetCheck) return res.status(404).json({ success: false, message: 'Không tìm thấy người dùng' });
+    if (req.user.role !== 'admin' && ['admin', 'moderator'].includes(targetCheck.role)) {
+      return res.status(403).json({ success: false, message: 'Điều hành không thể khóa tài khoản admin hoặc điều hành khác' });
+    }
     const { isBanned, banReason = '' } = req.body;
     const user = await User.findByIdAndUpdate(
       req.params.id,

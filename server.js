@@ -37,6 +37,8 @@ app.use('/api/chat', require('./routes/chat'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/search', require('./routes/search'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/game', require('./routes/game'));
+app.use('/api/wallet', require('./routes/wallet'));
 
 // Health check
 app.get('/health', (_, res) => res.json({ status: 'ok', time: new Date() }));

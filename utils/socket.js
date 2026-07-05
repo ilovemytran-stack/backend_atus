@@ -1,7 +1,13 @@
 const User = require('../models/User');
+const registerGameSocket = require('./gameSocket');
+const registerTradeSocket = require('./tradeSocket');
+const registerWorldEvents = require('./worldEvents');
 
 module.exports = (io) => {
   const onlineUsers = new Map();
+  const gameSocketHandler = registerGameSocket(io);
+  const tradeSocketHandler = registerTradeSocket(io);
+  const worldEventsHandler = registerWorldEvents(io);
 
   io.on('connection', async (socket) => {
     const userId = socket.handshake.auth.userId;
@@ -11,6 +17,10 @@ module.exports = (io) => {
       await User.findByIdAndUpdate(userId, { isOnline: true });
       io.emit('user_online', { userId });
     }
+
+    gameSocketHandler(socket);
+    tradeSocketHandler(socket);
+    worldEventsHandler(socket);
 
     // Typing indicators
     socket.on('typing', ({ conversationId, userId }) => {
