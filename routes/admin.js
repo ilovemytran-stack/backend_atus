@@ -2,6 +2,8 @@ const router = require('express').Router();
 const User = require('../models/User');
 const Post = require('../models/Post');
 const Video = require('../models/Video');
+const Character = require('../models/Character');
+const GD = require('../data/gameData');
 const { protect } = require('../middleware/auth');
 
 const adminOnly = (req, res, next) => {
@@ -171,6 +173,77 @@ router.delete('/videos/:id', async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+});
+
+// ===== GM TOOLS (G.Legendary) — admin + điều hành đều dùng được để test =====
+router.get('/game/characters', async (req, res) => {
+  try {
+    const q = (req.query.search || '').trim();
+    const filter = q ? { name: new RegExp(q, 'i') } : {};
+    const chars = await Character.find(filter).limit(20).populate('user', 'username displayName role');
+    res.json({ success: true, characters: chars });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+router.put('/game/characters/:id/set-level', async (req, res) => {
+  try {
+    const { level } = req.body;
+    const lv = Math.max(1, Math.min(GD.MAX_LEVEL, Number(level)));
+    const char = await Character.findById(req.params.id);
+    if (!char) return res.status(404).json({ success: false, message: 'Không tìm thấy nhân vật' });
+    const oldLevel = char.level;
+    char.level = lv; char.xp = 0;
+    // cấp cao hơn -> cấp bù điểm thuộc tính/kỹ năng và mở khoá thách đấu thần cho các mốc đã đi qua (để test được đầy đủ)
+    if (lv > oldLevel) {
+      for (let l = oldLevel + 1; l <= lv; l++) {
+        if (l % GD.POINTS_EVERY === 0) { char.unspentStatPoints += GD.STAT_POINTS_PER_TIER; char.unspentSkillPoints += GD.SKILL_POINTS_PER_TIER; }
+        if (l % 10 === 0) {
+          const tier = l / 10;
+          if (!char.godDuels.some((d) => d.tier === tier)) {
+            const cont = GD.CONTINENTS.find((c) => c.id === char.position.continentId) || GD.CONTINENTS[0];
+            char.godDuels.push({ tier, continentId: cont.id, godName: cont.god.name, status: 'pending' });
+          }
+        }
+      }
+    }
+    await char.save();
+    res.json({ success: true, message: `Đã đặt cấp ${char.name} thành ${lv}` });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+router.put('/game/characters/:id/currency', async (req, res) => {
+  try {
+    const { gold = 0, gem = 0 } = req.body;
+    const char = await Character.findById(req.params.id);
+    if (!char) return res.status(404).json({ success: false, message: 'Không tìm thấy nhân vật' });
+    char.gold = Math.max(0, char.gold + Number(gold || 0));
+    char.gem = Math.max(0, char.gem + Number(gem || 0));
+    await char.save();
+    res.json({ success: true, message: `Đã cộng ${gold}🪙 ${gem}💎 cho ${char.name}` });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+router.put('/game/characters/:id/damage-buff', async (req, res) => {
+  try {
+    const { multiplier } = req.body; // 1 = bình thường, vd 5 = x5 sát thương để test
+    const char = await Character.findById(req.params.id);
+    if (!char) return res.status(404).json({ success: false, message: 'Không tìm thấy nhân vật' });
+    char.gmDamageMultiplier = Math.max(0.1, Math.min(50, Number(multiplier) || 1));
+    await char.save();
+    res.json({ success: true, message: `Đã đặt buff sát thương x${char.gmDamageMultiplier} cho ${char.name}` });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+router.put('/game/characters/:id/complete-quests', async (req, res) => {
+  try {
+    const char = await Character.findById(req.params.id);
+    if (!char) return res.status(404).json({ success: false, message: 'Không tìm thấy nhân vật' });
+    char.questProgress = char.questProgress || {};
+    ['q_first_blood', 'q_gear_up'].forEach((id) => { char.questProgress[id] = 9999; });
+    char.markModified('questProgress');
+    await char.save();
+    res.json({ success: true, message: `Đã đánh dấu hoàn thành nhiệm vụ hiện tại cho ${char.name} (vào game bấm Nhận thưởng)` });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
 module.exports = router;

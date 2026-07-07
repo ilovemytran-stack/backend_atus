@@ -77,11 +77,14 @@ module.exports = (io) => {
       spawnedAt: Date.now(), lastActionAt: Date.now(), damageBy: new Map(),
     };
     io.to(roomOf(map.id, zone)).emit('boss_spawned', { mapId: map.id, zone, form, hp: boss.hp, maxHp: boss.maxHp, singleFormMode });
+    // thông báo toàn server để ai cũng biết boss xuất hiện, dù không đứng đúng map/khu vực
+    io.emit('world_boss_alert', { type: 'spawned', mapId: map.id, zone, mapName: map.name, continentName: continent.name });
   }
 
   function despawnBoss(reason) {
     if (!boss) return;
     io.to(roomOf(boss.mapId, boss.zone)).emit('boss_despawned', { reason });
+    io.emit('world_boss_alert', { type: 'despawned', reason });
     boss = null;
     bossNextSpawn = Date.now() + GD.MEGA_BOSS_SPAWN_INTERVAL_MS;
   }
@@ -148,6 +151,14 @@ module.exports = (io) => {
       const g = gods.get(contId);
       if (g && g.mapId === mapId && g.zone === zone) socket.emit('god_spawned', { continentId: contId, name: g.name, color: g.color, hp: g.hp, maxHp: g.maxHp });
       if (boss && boss.mapId === mapId && boss.zone === zone) socket.emit('boss_spawned', { mapId, zone, form: boss.form, hp: boss.hp, maxHp: boss.maxHp, singleFormMode: boss.singleFormMode });
+    });
+
+    // Ai cũng xem được boss đang ở đâu, dù không đứng đúng map (dùng cho mục Thông Báo)
+    socket.on('world_boss_status_request', () => {
+      if (!boss) { socket.emit('world_boss_status', { active: false }); return; }
+      const continent = continentOf(boss.continentId);
+      const map = GD.MAPS.find((m) => m.id === boss.mapId);
+      socket.emit('world_boss_status', { active: true, mapId: boss.mapId, zone: boss.zone, mapName: map?.name, continentName: continent?.name, form: boss.form, hp: boss.hp, maxHp: boss.maxHp });
     });
 
     socket.on('world_boss_attack', ({ mapId, zone, dmg }) => {

@@ -149,13 +149,17 @@ const ZONE_PLAYER_CAP = 10;    // tối đa 10 người/khu vực
 
 function buildMaps() {
   const maps = [];
+  // Map hub + map quái đầu (index 0,1) dùng CHUNG mức cấp khởi điểm của lục địa —
+  // để nhân vật vừa vào lục địa (đúng cấp sàn) là đánh quái map 2 được ngay, không bị vượt cấp vô lý.
+  const roleLevelStep = [0, 0, 1, 2, 3, 4];
   CONTINENTS.forEach((cont) => {
     const span = MAX_LEVEL / CONTINENTS.length; // chia đều dải cấp độ cho 8 lục địa
     const lvFloor = Math.round((cont.idx - 1) * span) + 1;
     const lvCeil = Math.round(cont.idx * span);
+    const stepSize = (lvCeil - lvFloor) / 4;
     MAP_ROLES.forEach((role, i) => {
-      const mapLvMin = Math.max(1, Math.round(lvFloor + (i / 6) * (lvCeil - lvFloor)));
-      const mapLvMax = Math.max(mapLvMin + 2, Math.round(lvFloor + ((i + 1) / 6) * (lvCeil - lvFloor)));
+      const mapLvMin = Math.max(1, Math.round(lvFloor + roleLevelStep[i] * stepSize));
+      const mapLvMax = Math.max(mapLvMin + 2, Math.round(lvFloor + (roleLevelStep[i] + 1) * stepSize));
       let monsterIds = [];
       if (role === 'hub') monsterIds = [];
       else if (role === 'A') monsterIds = [cont.monsters[0]];
@@ -340,6 +344,10 @@ const CONSUMABLES = {
   hp_potion: { id: 'hp_potion', name: 'HP Potion', desc: 'Hồi 40% HP', effect: { hp: 0.4 }, price: 35, currency: 'gold' },
   greater_hp_potion: { id: 'greater_hp_potion', name: 'Greater HP Potion', desc: 'Hồi 60% HP', effect: { hp: 0.6 }, price: 70, currency: 'gold' },
   mega_hp_potion: { id: 'mega_hp_potion', name: 'Mega HP Potion', desc: 'Hồi 100% HP', effect: { hp: 1.0 }, price: 140, currency: 'gold' },
+  minor_ki_potion: { id: 'minor_ki_potion', name: 'Minor Ki Potion', desc: 'Hồi 25% Ki', effect: { ki: 0.25 }, price: 15, currency: 'gold' },
+  ki_potion: { id: 'ki_potion', name: 'Ki Potion', desc: 'Hồi 50% Ki', effect: { ki: 0.5 }, price: 35, currency: 'gold' },
+  greater_ki_potion: { id: 'greater_ki_potion', name: 'Greater Ki Potion', desc: 'Hồi 80% Ki', effect: { ki: 0.8 }, price: 65, currency: 'gold' },
+  mega_ki_potion: { id: 'mega_ki_potion', name: 'Mega Ki Potion', desc: 'Hồi 100% Ki ngay lập tức', effect: { ki: 1.0 }, price: 130, currency: 'gold' },
   elixir_of_life: { id: 'elixir_of_life', name: 'Elixir of Life', desc: 'Hồi 100% HP + tăng 20% HP tối đa 600s', effect: { hp: 1.0, buffMaxHp: 0.2, buffSec: 600 }, price: 12, currency: 'gem' },
   might_potion: { id: 'might_potion', name: 'Might Potion', desc: 'Tăng 20% sát thương vật lý 300s', effect: { buffAtk: 0.2, buffSec: 300 }, price: 25, currency: 'gold' },
   swiftness_potion: { id: 'swiftness_potion', name: 'Swiftness Potion', desc: 'Tăng 15% tốc độ di chuyển 300s', effect: { buffSpd: 0.15, buffSec: 300 }, price: 20, currency: 'gold' },

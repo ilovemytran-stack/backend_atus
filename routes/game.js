@@ -61,6 +61,9 @@ function computeStats(char) {
   const blessingCount = (char.godBlessings || []).length;
   hp += blessingCount * 25; atk += blessingCount * 3; def += blessingCount * 2;
 
+  // công cụ GM: buff sát thương để test (mặc định x1 = không đổi)
+  if (char.gmDamageMultiplier && char.gmDamageMultiplier !== 1) atk *= char.gmDamageMultiplier;
+
   return {
     hp: Math.round(hp), ki: Math.round(ki), atk: Math.round(atk), def: Math.round(def),
     spd: +spd.toFixed(2), crit: +crit.toFixed(1), mag: +mag.toFixed(1),

@@ -55,6 +55,7 @@ const characterSchema = new mongoose.Schema({
   pvpWins: { type: Number, default: 0 },
   pvpLosses: { type: Number, default: 0 },
   bossKills: { type: Number, default: 0 },
+  gmDamageMultiplier: { type: Number, default: 1 }, // công cụ GM: buff sát thương để test (admin/điều hành)
 
   mailbox: [{
     kind: { type: String, enum: ['topup', 'system', 'quest', 'gm'], default: 'topup' },
