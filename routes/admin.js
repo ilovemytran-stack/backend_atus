@@ -239,7 +239,9 @@ router.put('/game/characters/:id/complete-quests', async (req, res) => {
     const char = await Character.findById(req.params.id);
     if (!char) return res.status(404).json({ success: false, message: 'Không tìm thấy nhân vật' });
     char.questProgress = char.questProgress || {};
-    ['q_first_blood', 'q_gear_up'].forEach((id) => { char.questProgress[id] = 9999; });
+    Object.assign(char.questProgress, {
+      totalKills: 9999, q_gear_up: 1, duelsWon: 9999, continentsVisited: GD.CONTINENTS.map((c) => c.id),
+    });
     char.markModified('questProgress');
     await char.save();
     res.json({ success: true, message: `Đã đánh dấu hoàn thành nhiệm vụ hiện tại cho ${char.name} (vào game bấm Nhận thưởng)` });

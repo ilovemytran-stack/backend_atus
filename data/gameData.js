@@ -245,6 +245,25 @@ function scaleMonster(monsterDef, mapLevel, isBoss = false, isMixTier = false) {
   };
 }
 
+// Thần Hộ Vệ (BOSSES, mỗi lục địa 1 vị, đứng ở map role='boss') — mạnh hơn hẳn quái isBoss thường,
+// lấy trung bình 3 quái nền của lục địa làm gốc rồi nhân hệ số lớn.
+function guardianBossStatsFor(continent, mapLevel) {
+  const mons = continent.monsters.map((id) => MONSTERS[id]);
+  const avgHp = mons.reduce((s, m) => s + m.baseHp, 0) / mons.length;
+  const avgAtk = mons.reduce((s, m) => s + m.baseAtk, 0) / mons.length;
+  const avgDef = mons.reduce((s, m) => s + m.baseDef, 0) / mons.length;
+  const lvGrow = 1 + (mapLevel - 1) * 0.12;
+  return {
+    hp: Math.round(avgHp * lvGrow * 14),
+    atk: Math.round(avgAtk * lvGrow * 2.6),
+    def: Math.round(avgDef * lvGrow * 2.2),
+    xp: Math.round((8 + mapLevel * 2) * 14),
+    goldMin: Math.round((2 + mapLevel * 0.6) * 16),
+    goldMax: Math.round((6 + mapLevel * 1.2) * 18),
+    gemChance: 0.4,
+  };
+}
+
 // ---- Vũ khí theo class x 5 phẩm chất (đúng bản vẽ WEAPONS, gán theo weaponType) ----
 const RARITY = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
 const RARITY_LABEL = { common: 'Thường', uncommon: 'Hiếm', rare: 'Sử Thi', epic: 'Huyền Thoại', legendary: 'Thần Thoại' };
@@ -423,23 +442,30 @@ const MINIONS = {
 };
 
 // ---- Boss Compendium: 10 Thần Linh Hộ Vệ (dữ liệu sẵn sàng, chưa gắn AI riêng — xem ghi chú cuối file) ----
+// FIX (bug boss map Celestia): trước đây code tra guardian bằng quy ước b.id === `b_${continentId}`,
+// nhưng chỉ 3/8 vị (aurelion/verdantia/aquaris) được đặt tên trùng continentId nên khớp "may rủi".
+// 5 lục địa còn lại (draconia, shadowfell, crystalia, sandoria, celestia — gồm CẢ Celestia) không khớp
+// -> guardian luôn undefined -> map boss của các lục địa đó rơi vào nhánh dự phòng (buff quái thường,
+// mất tên/diện mạo Thần Hộ Vệ riêng). Fix triệt để: thêm field continentId TƯỜNG MINH cho từng vị,
+// và đổi mọi nơi tra cứu (game.js, game-entities.js, game-ui.js) sang so khớp continentId thay vì suy
+// diễn từ id. Giữ nguyên `id` gốc vì đó cũng là tên file ảnh /assets/game/bosses/<id>.png đã có sẵn.
 const BOSSES = [
-  { id: 'b_aurelion', name: 'Aurelion', title: 'Thần Ánh Sáng', element: 'Ánh Sáng', weapon: 'Kiếm Quang Thần', trait: 'Tấn công tầm xa, gây sát thương và hỗ trợ đồng minh.', skills: ['Chém Thánh Thương', 'Thiên Quang Thức', 'Quang Ảnh Liên Kích', 'Vòng Quang Hộ Thể'], ult: 'Thiên Hạ Giáng Lâm' },
-  { id: 'b_umbraxia', name: 'Umbraxia', title: 'Nữ Hoàng Bóng Tối', element: 'Bóng Tối', weapon: 'Trượng Hư Vô', trait: 'Gây hiệu ứng tiêu cực, hút máu và triệu hồi bóng tối.', skills: ['Hắc Ám Xé Toạc', 'Xiềng Hắc Ám', 'Bước Ảnh', 'Hắc Vực Nuốt Chửng'], ult: 'Lưỡi Hái Tử Thần' },
-  { id: 'b_ignis', name: 'Ignis', title: 'Thần Lửa Hủy Diệt', element: 'Lửa', weapon: 'Đại Đao Hỏa Diệm', trait: 'Sát thương diện rộng, đốt cháy và phá hủy phòng thủ.', skills: ['Hỏa Cầu', 'Dòng Magma Phun Trào', 'Giáp Hỏa Long', 'Hỏa Long Giáng Thế'], ult: 'Hủy Diệt Bất Tận' },
-  { id: 'b_aquaris', name: 'Aquaris', title: 'Thần Nước Sâu Thẳm', element: 'Nước', weapon: 'Thương Tam Xoa', trait: 'Kiểm soát đám đông, phòng thủ cao và hồi phục.', skills: ['Đòn Sóng Thần', 'Dòng Chảy Sinh Mệnh', 'Xoáy Nước', 'Thủy Triều'], ult: 'Đại Hồng Thủy' },
-  { id: 'b_verdantia', name: 'Verdantia', title: 'Thần Tự Nhiên', element: 'Gió', weapon: 'Trượng Sinh Mệnh', trait: 'Triệu hồi sinh vật, hồi phục và gây độc.', skills: ['Lưỡi Dao Gió', 'Hồi Sinh Tự Nhiên', 'Bão Lá Cuốn', 'Vòng Sinh Mệnh'], ult: 'Nộ Thần Rừng Già' },
-  { id: 'b_terranos', name: 'Terranos', title: 'Thần Đất Kiên Cố', element: 'Đất', weapon: 'Búa Địa Tâm', trait: 'Phòng thủ cực cao, gây choáng và làm chậm.', skills: ['Đập Địa Chấn', 'Dải Đất Nhô Lên', 'Giáp Đá', 'Lốc Cát'], ult: 'Thần Lốc Sa Mạc' },
-  { id: 'b_voltarion', name: 'Voltarion', title: 'Thần Sấm Sét', element: 'Sấm', weapon: 'Thương Lôi Điện', trait: 'Tốc độ cực nhanh, gây choáng và sát thương bộc phát.', skills: ['Lôi Kích', 'Dây Lôi', 'Giáp Lôi', 'Thiên Lôi Giáng Thế'], ult: 'Phán Quyết Thiên Đình' },
-  { id: 'b_glaciera', name: 'Glaciera', title: 'Thần Băng Giá', element: 'Băng', weapon: 'Trượng Băng Hàn', trait: 'Làm chậm, đóng băng và tăng phòng thủ.', skills: ['Tia Băng', 'Băng Gai', 'Bão Tuyết', 'Đóng Băng Vĩnh Cửu'], ult: 'Kỷ Nguyên Băng Hà' },
-  { id: 'b_chaoseraph', name: 'Chaoseraph', title: 'Thần Hỗn Mang', element: 'Hỗn Mang', weapon: 'Trượng Hỗn Mang', trait: 'Tấn công hỗn hợp, biến ảo và phá hủy tất cả.', skills: ['Cầu Hồn Đọa', 'Xé Không Gian', 'Biến Ảo', 'Hắc Vortex'], ult: 'Hỗn Mang Vĩnh Hằng' },
-  { id: 'b_morphiel', name: 'Morphiel', title: 'Thần Biến Ảo Vô Hình', element: 'Thay Đổi Hình Dạng', weapon: 'Song Kiếm Ảo Ảnh', trait: 'Thay đổi hình dạng, đòn đánh khó lường.',
+  { id: 'b_aurelion', continentId: 'aurelion', name: 'Aurelion', title: 'Thần Ánh Sáng', element: 'Ánh Sáng', weapon: 'Kiếm Quang Thần', trait: 'Tấn công tầm xa, gây sát thương và hỗ trợ đồng minh.', skills: ['Chém Thánh Thương', 'Thiên Quang Thức', 'Quang Ảnh Liên Kích', 'Vòng Quang Hộ Thể'], ult: 'Thiên Hạ Giáng Lâm' },
+  { id: 'b_umbraxia', continentId: 'shadowfell', name: 'Umbraxia', title: 'Nữ Hoàng Bóng Tối', element: 'Bóng Tối', weapon: 'Trượng Hư Vô', trait: 'Gây hiệu ứng tiêu cực, hút máu và triệu hồi bóng tối.', skills: ['Hắc Ám Xé Toạc', 'Xiềng Hắc Ám', 'Bước Ảnh', 'Hắc Vực Nuốt Chửng'], ult: 'Lưỡi Hái Tử Thần' },
+  { id: 'b_ignis', continentId: 'draconia', name: 'Ignis', title: 'Thần Lửa Hủy Diệt', element: 'Lửa', weapon: 'Đại Đao Hỏa Diệm', trait: 'Sát thương diện rộng, đốt cháy và phá hủy phòng thủ.', skills: ['Hỏa Cầu', 'Dòng Magma Phun Trào', 'Giáp Hỏa Long', 'Hỏa Long Giáng Thế'], ult: 'Hủy Diệt Bất Tận' },
+  { id: 'b_aquaris', continentId: 'aquaris', name: 'Aquaris', title: 'Thần Nước Sâu Thẳm', element: 'Nước', weapon: 'Thương Tam Xoa', trait: 'Kiểm soát đám đông, phòng thủ cao và hồi phục.', skills: ['Đòn Sóng Thần', 'Dòng Chảy Sinh Mệnh', 'Xoáy Nước', 'Thủy Triều'], ult: 'Đại Hồng Thủy' },
+  { id: 'b_verdantia', continentId: 'verdantia', name: 'Verdantia', title: 'Thần Tự Nhiên', element: 'Gió', weapon: 'Trượng Sinh Mệnh', trait: 'Triệu hồi sinh vật, hồi phục và gây độc.', skills: ['Lưỡi Dao Gió', 'Hồi Sinh Tự Nhiên', 'Bão Lá Cuốn', 'Vòng Sinh Mệnh'], ult: 'Nộ Thần Rừng Già' },
+  { id: 'b_terranos', continentId: 'sandoria', name: 'Terranos', title: 'Thần Đất Kiên Cố', element: 'Đất', weapon: 'Búa Địa Tâm', trait: 'Phòng thủ cực cao, gây choáng và làm chậm.', skills: ['Đập Địa Chấn', 'Dải Đất Nhô Lên', 'Giáp Đá', 'Lốc Cát'], ult: 'Thần Lốc Sa Mạc' },
+  { id: 'b_voltarion', continentId: 'celestia', name: 'Voltarion', title: 'Thần Sấm Sét', element: 'Sấm', weapon: 'Thương Lôi Điện', trait: 'Tốc độ cực nhanh, gây choáng và sát thương bộc phát.', skills: ['Lôi Kích', 'Dây Lôi', 'Giáp Lôi', 'Thiên Lôi Giáng Thế'], ult: 'Phán Quyết Thiên Đình' },
+  { id: 'b_glaciera', continentId: 'crystalia', name: 'Glaciera', title: 'Thần Băng Giá', element: 'Băng', weapon: 'Trượng Băng Hàn', trait: 'Làm chậm, đóng băng và tăng phòng thủ.', skills: ['Tia Băng', 'Băng Gai', 'Bão Tuyết', 'Đóng Băng Vĩnh Cửu'], ult: 'Kỷ Nguyên Băng Hà' },
+  { id: 'b_chaoseraph', continentId: null, name: 'Chaoseraph', title: 'Thần Hỗn Mang', element: 'Hỗn Mang', weapon: 'Trượng Hỗn Mang', trait: 'Tấn công hỗn hợp, biến ảo và phá hủy tất cả.', skills: ['Cầu Hồn Đọa', 'Xé Không Gian', 'Biến Ảo', 'Hắc Vortex'], ult: 'Hỗn Mang Vĩnh Hằng' }, // Boss Thế Giới lang thang, không thuộc lục địa nào cố định
+  { id: 'b_morphiel', continentId: null, name: 'Morphiel', title: 'Thần Biến Ảo Vô Hình', element: 'Thay Đổi Hình Dạng', weapon: 'Song Kiếm Ảo Ảnh', trait: 'Thay đổi hình dạng, đòn đánh khó lường.',
     forms: [
       { name: 'Dạng Rồng', skills: ['Hỏa Diệm Phun Trào', 'Vồ Lửa Hủy Diệt'] },
       { name: 'Dạng Bóng Tối', skills: ['Ảnh Kích', 'Hắc Ám Nuốt Chửng'] },
       { name: 'Dạng Thú', skills: ['Vuốt Xé', 'Cuồng Nộ'] },
       { name: 'Dạng Thần', skills: ['Ánh Sáng Xuyên Thấu'] },
-    ], ult: 'Phán Quyết Ảo Ảnh' },
+    ], ult: 'Phán Quyết Ảo Ảnh' }, // dữ liệu dự phòng, chưa gắn vào map/sự kiện nào — giữ nguyên, không xoá
 ];
 
 module.exports = {
@@ -449,5 +475,5 @@ module.exports = {
   MINIONS, BOSSES, WEAPON_REQ_LEVEL, ARMOR_REQ_LEVEL, STARTER_GEAR, ZONE_MAX_PER_MAP, ZONE_PLAYER_CAP,
   GOD_SPAWN_INTERVAL_MS, GOD_LIFESPAN_MS, MEGA_BOSS_SPAWN_INTERVAL_MS, MEGA_BOSS_IDLE_DESPAWN_MS,
   GOD_GIFT_GOLD, GOD_GIFT_GEM, MEGA_BOSS_KILL_REWARD_VIPCOIN, MEGA_BOSS_SPECIAL_DROP_CHANCE_EACH,
-  godStatsFor, megaBossBaseStatsFor, megaBossFormStats, blessingSkillFor,
+  godStatsFor, megaBossBaseStatsFor, megaBossFormStats, blessingSkillFor, guardianBossStatsFor,
 };

@@ -77,6 +77,14 @@ module.exports = (io) => {
       io.to(roomOf(mapId, cur.zone)).emit('game_chat_message', { userId, name: p?.name || '???', text: text.trim().slice(0, 140) });
     });
 
+    // Chat Thế Giới: phát cho TOÀN BỘ người chơi đang online, không giới hạn theo map/khu vực
+    socket.on('game_world_chat', ({ text }) => {
+      if (!text || !text.trim()) return;
+      const cur = socketMap.get(socket.id);
+      const p = cur ? getZoneRoom(cur.mapId, cur.zone).get(userId) : null;
+      io.emit('game_world_chat_message', { userId, name: p?.name || '???', text: text.trim().slice(0, 140), at: Date.now() });
+    });
+
     socket.on('game_leave_map', () => leaveCurrentZone(socket));
     socket.on('disconnect', () => leaveCurrentZone(socket));
   };

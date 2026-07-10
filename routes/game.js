@@ -2,25 +2,93 @@ const router = require('express').Router();
 const Character = require('../models/Character');
 const { protect } = require('../middleware/auth');
 const GD = require('../data/gameData');
+const { grantGuildXp } = require('../utils/guildLeveling');
 
-// ---- Nhiệm vụ đơn giản (point 2 & 11 — NPC giao nhiệm vụ) ----
+// ---- Nhiệm vụ (point 2 & 11 — NPC giao nhiệm vụ) — trải dài Lv1-60, thưởng XP tăng dần theo mốc cấp ----
 const QUESTS = [
-  { id: 'q_first_blood', name: 'Diệt 5 quái đầu tiên', type: 'kill', target: 5, reward: { xp: 30, gold: 50 } },
-  { id: 'q_gear_up', name: 'Mua 1 vũ khí từ thợ rèn', type: 'buy_weapon', target: 1, reward: { xp: 40, gem: 5 } },
-  { id: 'q_explorer', name: 'Đạt cấp độ 10', type: 'reach_level', target: 10, reward: { xp: 0, gold: 150, gem: 10 } },
+  { id: 'q_first_blood', name: 'Diệt 5 quái đầu tiên', desc: 'Hạ 5 quái bất kỳ để làm quen chiến đấu.', type: 'kill', target: 5, reward: { xp: 30, gold: 50 } },
+  { id: 'q_gear_up', name: 'Mua 1 vũ khí từ thợ rèn', desc: 'Ghé Thợ Rèn Vũ Khí sắm món đầu tiên.', type: 'buy_weapon', target: 1, reward: { xp: 40, gem: 5 } },
+  { id: 'q_armor_up', name: 'Trang bị 1 món giáp', desc: 'Mặc bất kỳ giáp nào vào người.', type: 'equip_armor', target: 1, reward: { xp: 40, gold: 60 } },
+  { id: 'q_explorer', name: 'Đạt cấp độ 10', desc: 'Lên cấp 10 để mở Thách Đấu Thần Linh đầu tiên.', type: 'reach_level', target: 10, reward: { xp: 100, gold: 150, gem: 10 } },
+  { id: 'q_hunter', name: 'Diệt 30 quái', desc: 'Tích luỹ 30 lượt hạ quái.', type: 'kill', target: 30, reward: { xp: 150, gold: 200 } },
+  { id: 'q_rising_star', name: 'Đạt cấp độ 20', desc: 'Chứng tỏ bản lĩnh ở cấp 20.', type: 'reach_level', target: 20, reward: { xp: 250, gold: 300, gem: 20 } },
+  { id: 'q_wealthy', name: 'Tích luỹ 1.000 vàng', desc: 'Buôn bán, săn quái để dư dả hơn.', type: 'earn_gold', target: 1000, reward: { xp: 200, gem: 15 } },
+  { id: 'q_first_duel', name: 'Thắng 1 Thách Đấu Thần Linh', desc: 'Đánh bại một vị Thần để nhận phước lành.', type: 'win_duel', target: 1, reward: { xp: 250, gold: 250, gem: 20 } },
+  { id: 'q_veteran', name: 'Đạt cấp độ 30', desc: 'Nửa chặng đường tới đỉnh cao.', type: 'reach_level', target: 30, reward: { xp: 400, gold: 500, gem: 30 } },
+  { id: 'q_wanderer', name: 'Đặt chân đến 4 lục địa', desc: 'Khám phá ít nhất 4 lục địa khác nhau.', type: 'visit_continents', target: 4, reward: { xp: 500, gem: 35 } },
+  { id: 'q_slayer', name: 'Diệt 100 quái', desc: 'Trở thành tay săn quái lão luyện.', type: 'kill', target: 100, reward: { xp: 600, gold: 500 } },
+  { id: 'q_champion', name: 'Đạt cấp độ 40', desc: 'Sức mạnh vượt trội hơn hẳn người thường.', type: 'reach_level', target: 40, reward: { xp: 700, gold: 900, gem: 50 } },
+  { id: 'q_blessed', name: 'Thắng 3 Thách Đấu Thần Linh', desc: 'Được 3 vị Thần khác nhau ban phước.', type: 'win_duel', target: 3, reward: { xp: 800, gold: 600, gem: 40 } },
+  { id: 'q_master', name: 'Đạt cấp độ 50', desc: 'Chỉ còn một bước nữa tới đỉnh.', type: 'reach_level', target: 50, reward: { xp: 1200, gold: 1500, gem: 70 } },
+  { id: 'q_legend', name: 'Đạt cấp độ tối đa 60', desc: 'Chinh phục giới hạn sức mạnh hiện tại.', type: 'reach_level', target: 60, reward: { xp: 0, gold: 3000, gem: 150 } },
 ];
 
 function xpToNextLevel(level) { return Math.round(40 * Math.pow(level, 1.55)); }
 
-// Toàn bộ chiêu nhân vật CÓ THỂ dùng: 2 chiêu gốc của class + các chiêu học thêm (phước lành thần linh)
+// Xử lý lên cấp DÙNG CHUNG cho mọi nguồn XP (diệt quái, nhận thưởng nhiệm vụ...) để không
+// nguồn nào bị "quên" cộng điểm thuộc tính / điểm chiêu / mở Thách Đấu Thần Linh.
+function applyLevelUps(char) {
+  const leveledUp = [];
+  while (char.level < GD.MAX_LEVEL && char.xp >= xpToNextLevel(char.level)) {
+    char.xp -= xpToNextLevel(char.level);
+    char.level += 1;
+    leveledUp.push(char.level);
+    if (char.level % GD.POINTS_EVERY === 0) {
+      char.unspentStatPoints += GD.STAT_POINTS_PER_TIER;
+      char.unspentSkillPoints += GD.SKILL_POINTS_PER_TIER;
+    }
+    if (char.level % 10 === 0) {
+      const tier = char.level / 10;
+      const already = char.godDuels.some((d) => d.tier === tier);
+      if (!already) {
+        // Ngẫu nhiên 1 vị Thần chưa từng mời đấu (còn lại), để mỗi mốc 10 cấp là 1 lời mời khác nhau
+        // thay vì luôn khoá cứng theo lục địa đang đứng.
+        const usedContinents = new Set(char.godDuels.map((d) => d.continentId));
+        const pool = GD.CONTINENTS.filter((c) => !usedContinents.has(c.id));
+        const options = pool.length ? pool : GD.CONTINENTS;
+        const cont = options[Math.floor(Math.random() * options.length)];
+        char.godDuels.push({ tier, continentId: cont.id, godName: cont.god.name, status: 'pending' });
+      }
+    }
+  }
+  return leveledUp;
+}
+
+// Tính tiến độ hiện tại của 1 nhiệm vụ theo type — gộp về 1 chỗ để dễ thêm loại nhiệm vụ mới.
+function questProgressValue(char, quest) {
+  switch (quest.type) {
+    case 'reach_level': return char.level;
+    case 'earn_gold': return char.gold;
+    case 'equip_armor': return ['body', 'legs', 'boots', 'gloves', 'helmet'].some((k) => char.equipment[k]) ? 1 : 0;
+    case 'win_duel': return char.questProgress?.duelsWon || 0;
+    case 'visit_continents': return (char.questProgress?.continentsVisited || []).length;
+    case 'buy_weapon': return char.questProgress?.q_gear_up || 0;
+    case 'kill': return char.questProgress?.totalKills || 0;
+    default: return char.questProgress?.[quest.id] || 0;
+  }
+}
+
+function findSkillById(skillId) {
+  for (const cid in GD.CLASSES) {
+    const found = GD.CLASSES[cid].skills.find((s) => s.id === skillId);
+    if (found) return { ...found, fromClass: GD.CLASSES[cid].name, color: found.color || GD.CLASSES[cid].color };
+  }
+  return null;
+}
+
+// Toàn bộ chiêu nhân vật CÓ THỂ dùng: 2 chiêu gốc của class + chiêu học thêm qua
+// Thách Đấu Thần Linh (mỗi lần thắng = ngẫu nhiên 1 chiêu của MỘT NHÂN VẬT KHÁC, không phải chiêu của Thần).
 function getAllSkillsFor(char) {
   const cls = GD.CLASSES[char.classId];
-  const blessingSkills = (char.knownSkills || []).map((id) => {
-    const contId = id.replace('blessing_', '');
-    const cont = GD.CONTINENTS.find((c) => c.id === contId);
-    return cont ? GD.blessingSkillFor(cont, 1) : null;
+  const extra = (char.knownSkills || []).map((id) => {
+    if (id.startsWith('blessing_')) { // tương thích ngược với dữ liệu cũ (chiêu của Thần)
+      const contId = id.replace('blessing_', '');
+      const cont = GD.CONTINENTS.find((c) => c.id === contId);
+      return cont ? GD.blessingSkillFor(cont, 1) : null;
+    }
+    return findSkillById(id); // chiêu mượn từ một nhân vật khác
   }).filter(Boolean);
-  return [...cls.skills, ...blessingSkills];
+  return [...cls.skills, ...extra];
 }
 
 function findGear(itemId, kind) {
@@ -80,7 +148,7 @@ function publicChar(char) {
   obj.effectiveEquippedSkills = (char.equippedSkills && char.equippedSkills.length === 2)
     ? char.equippedSkills
     : GD.CLASSES[char.classId].skills.filter((s) => s.type === 'active').map((s) => s.id);
-  obj.quests = QUESTS.map((q) => ({ ...q, progress: char.questProgress?.[q.id] || 0, claimed: !!char.questProgress?.[q.id + '_claimed'] }));
+  obj.quests = QUESTS.map((q) => ({ ...q, progress: questProgressValue(char, q), claimed: !!char.questProgress?.[q.id + '_claimed'] }));
   return obj;
 }
 
@@ -182,15 +250,25 @@ router.post('/character/reset-skills', protect, async (req, res) => {
 // point 4: nhận thưởng sau khi hạ quái (server tính lại sát thương/rơi đồ để tránh gian lận số liệu thô)
 router.post('/character/kill-monster', protect, async (req, res) => {
   try {
-    const { mapId } = req.body;
+    const { mapId, isBoss } = req.body;
     const char = await Character.findOne({ user: req.user._id });
     if (!char) return res.status(404).json({ success: false, message: 'Chưa có nhân vật' });
     const map = GD.MAPS.find((m) => m.id === mapId);
-    if (!map || !map.monsterIds.length) return res.status(400).json({ success: false, message: 'Map không hợp lệ' });
-    const monsterId = map.monsterIds[Math.floor(Math.random() * map.monsterIds.length)];
-    const monsterDef = GD.MONSTERS[monsterId];
-    const mapLevel = map.levelRange[1];
-    const drop = GD.scaleMonster(monsterDef, mapLevel, false, map.isMixedTier);
+    if (!map) return res.status(400).json({ success: false, message: 'Map không hợp lệ' });
+
+    let drop, lootName;
+    if (isBoss && map.hasBoss) {
+      const continent = GD.CONTINENTS.find((c) => c.id === map.continentId);
+      const guardian = GD.BOSSES.find((b) => b.continentId === map.continentId);
+      drop = GD.guardianBossStatsFor(continent, map.levelRange[1]);
+      lootName = guardian?.name || continent.name;
+    } else {
+      if (!map.monsterIds.length) return res.status(400).json({ success: false, message: 'Map không hợp lệ' });
+      const monsterId = map.monsterIds[Math.floor(Math.random() * map.monsterIds.length)];
+      const monsterDef = GD.MONSTERS[monsterId];
+      drop = GD.scaleMonster(monsterDef, map.levelRange[1], false, map.isMixedTier);
+      lootName = monsterDef.nameVN;
+    }
 
     char.xp += drop.xp;
     const gold = drop.goldMin + Math.floor(Math.random() * (drop.goldMax - drop.goldMin + 1));
@@ -198,36 +276,22 @@ router.post('/character/kill-monster', protect, async (req, res) => {
     let gemWon = 0;
     if (Math.random() < drop.gemChance) { gemWon = 1; char.gem += 1; }
 
-    const leveledUp = [];
-    while (char.level < GD.MAX_LEVEL && char.xp >= xpToNextLevel(char.level)) {
-      char.xp -= xpToNextLevel(char.level);
-      char.level += 1;
-      leveledUp.push(char.level);
-      if (char.level % GD.POINTS_EVERY === 0) {
-        char.unspentStatPoints += GD.STAT_POINTS_PER_TIER;
-        char.unspentSkillPoints += GD.SKILL_POINTS_PER_TIER;
-      }
-      if (char.level % 10 === 0) {
-        const tier = char.level / 10;
-        const already = char.godDuels.some((d) => d.tier === tier);
-        if (!already) {
-          const cont = GD.CONTINENTS.find((c) => c.id === char.position.continentId) || GD.CONTINENTS[0];
-          char.godDuels.push({ tier, continentId: cont.id, godName: cont.god.name, status: 'pending' });
-        }
-      }
-    }
+    const leveledUp = applyLevelUps(char);
 
-    // tiến độ nhiệm vụ diệt quái
-    const kills = (char.questProgress.q_first_blood || 0) + 1;
-    char.questProgress = { ...char.questProgress, q_first_blood: kills };
+    // tiến độ nhiệm vụ diệt quái (đếm chung cho mọi nhiệm vụ loại 'kill')
+    const kills = (char.questProgress.totalKills || 0) + 1;
+    char.questProgress = { ...char.questProgress, totalKills: kills };
     char.markModified('questProgress');
 
     await char.save();
-    res.json({ success: true, character: publicChar(char), loot: { monster: monsterDef.nameVN, xp: drop.xp, gold, gem: gemWon }, leveledUp });
+
+    // Cộng KN Bang Hội tỉ lệ với KN nhân vật vừa nhận (boss/map khó -> KN Bang Hội cũng cao hơn tương ứng)
+    const guildXpGain = Math.max(1, Math.round(drop.xp * 0.2));
+    const guildResult = await grantGuildXp(char, guildXpGain).catch(() => null);
+
+    res.json({ success: true, character: publicChar(char), loot: { monster: lootName, xp: drop.xp, gold, gem: gemWon, isBoss: !!isBoss }, leveledUp, guild: guildResult });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
-
-// point 9/11: mua đồ từ NPC (vũ khí / trang bị / vật phẩm hồi phục)
 router.post('/character/buy', protect, async (req, res) => {
   try {
     const { itemId, kind } = req.body; // kind: weapon | armor | consumable
@@ -292,6 +356,12 @@ router.post('/character/move', protect, async (req, res) => {
     const char = await Character.findOne({ user: req.user._id });
     if (!char) return res.status(404).json({ success: false, message: 'Chưa có nhân vật' });
     char.position = { continentId: map.continentId, mapId: map.id, x: x ?? 400, y: y ?? 300 };
+    const visited = new Set(char.questProgress?.continentsVisited || []);
+    if (!visited.has(map.continentId)) {
+      visited.add(map.continentId);
+      char.questProgress = { ...char.questProgress, continentsVisited: Array.from(visited) };
+      char.markModified('questProgress');
+    }
     await char.save();
     res.json({ success: true, character: publicChar(char) });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
@@ -306,14 +376,15 @@ router.post('/character/quests/claim', protect, async (req, res) => {
     const char = await Character.findOne({ user: req.user._id });
     if (!char) return res.status(404).json({ success: false, message: 'Chưa có nhân vật' });
     if (char.questProgress?.[questId + '_claimed']) return res.status(400).json({ success: false, message: 'Đã nhận thưởng' });
-    const progressVal = quest.type === 'reach_level' ? char.level : (char.questProgress?.[questId] || 0);
-    const done = quest.type === 'reach_level' ? progressVal >= quest.target : progressVal >= quest.target;
+    const progressVal = questProgressValue(char, quest);
+    const done = progressVal >= quest.target;
     if (!done) return res.status(400).json({ success: false, message: 'Chưa hoàn thành nhiệm vụ' });
     char.xp += quest.reward.xp || 0; char.gold += quest.reward.gold || 0; char.gem += quest.reward.gem || 0;
+    const leveledUp = applyLevelUps(char);
     char.questProgress = { ...char.questProgress, [questId + '_claimed']: true };
     char.markModified('questProgress');
     await char.save();
-    res.json({ success: true, character: publicChar(char) });
+    res.json({ success: true, character: publicChar(char), leveledUp });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
@@ -449,11 +520,22 @@ router.post('/character/duel/resolve', protect, async (req, res) => {
     if (won) {
       duel.status = 'won';
       const continent = GD.CONTINENTS.find((c) => c.id === duel.continentId);
-      char.godBlessings.push({ god: continent.god.name, skillName: continent.god.ultimate, grantedAtLevel: tier * 10 });
-      const skillId = `blessing_${continent.id}`;
-      if (!char.knownSkills.includes(skillId)) char.knownSkills.push(skillId);
+      // Thang dau Than = duoc ban phuoc de linh hoi 1 chieu NGAU NHIEN cua MOT NHAN VAT KHAC
+      // (khong phai class cua minh), chua tung hoc qua. Vi Than chi la nguoi ban phuoc.
+      const otherClassSkills = Object.values(GD.CLASSES)
+        .filter((c) => c.id !== char.classId)
+        .flatMap((c) => c.skills.filter((s) => s.type === 'active').map((s) => s.id));
+      const notYetKnown = otherClassSkills.filter((id) => !(char.knownSkills || []).includes(id));
+      const pool = notYetKnown.length ? notYetKnown : otherClassSkills;
+      const grantedId = pool[Math.floor(Math.random() * pool.length)];
+      const grantedSkill = findSkillById(grantedId);
+      char.godBlessings.push({ god: continent.god.name, skillName: grantedSkill.name, grantedAtLevel: tier * 10 });
+      if (!char.knownSkills.includes(grantedId)) char.knownSkills.push(grantedId);
+      char.questProgress = { ...char.questProgress, duelsWon: (char.questProgress?.duelsWon || 0) + 1 };
+      char.markModified('questProgress');
       await char.save();
-      res.json({ success: true, character: publicChar(char), message: `${continent.god.name} đã ban phước chiêu thức "${continent.god.ultimate}" cho bạn! Vào Menu > Kỹ Năng để gắn ra ngoài màn hình.` });
+      const msg = continent.god.name + ' đã ban phước, giúp bạn lĩnh hội chiêu "' + grantedSkill.name + '" của ' + grantedSkill.fromClass + '! Vào Menu > Kỹ Năng để gắn ra ngoài màn hình.';
+      res.json({ success: true, character: publicChar(char), message: msg });
     } else {
       res.json({ success: true, character: publicChar(char), message: 'Bạn đã thua. Thư thách đấu vẫn còn trong Thông Báo, thử lại bất cứ lúc nào — không mất gì.' });
     }
