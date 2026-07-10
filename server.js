@@ -38,6 +38,7 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/search', require('./routes/search'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/game', require('./routes/game'));
+app.use('/api/guild', require('./routes/guild'));
 app.use('/api/wallet', require('./routes/wallet'));
 
 // Health check
