@@ -1,5 +1,6 @@
 // Multiplayer thời gian thực cho G.Legendary — có hỗ trợ khu vực (zone) trong mỗi map.
 const { getZoneRoom, pickZone, zoneCounts } = require('./onlineRegistry');
+const Character = require('../models/Character');
 
 module.exports = (io) => {
   const socketMap = new Map(); // socket.id -> { userId, mapId, zone }
@@ -7,6 +8,17 @@ module.exports = (io) => {
 
   return (socket) => {
     const userId = socket.handshake.auth.userId;
+    socket.join(`user_${userId}`);
+    async function syncGuildRoom() {
+      try {
+        const c = await Character.findOne({ user: userId }).select('guildId');
+        Array.from(socket.rooms).forEach((r) => { if (r.startsWith('guild_')) socket.leave(r); });
+        if (c?.guildId) socket.join(`guild_${c.guildId}`);
+      } catch { /* ignore */ }
+    }
+    syncGuildRoom();
+    // Gọi lại ngay sau khi tạo/tham gia/rời Bang Hội (qua REST) để không cần reload trang mới chat được
+    socket.on('game_refresh_guild_room', syncGuildRoom);
 
     function leaveCurrentZone(sock) {
       const prev = socketMap.get(sock.id);
@@ -83,6 +95,25 @@ module.exports = (io) => {
       const cur = socketMap.get(socket.id);
       const p = cur ? getZoneRoom(cur.mapId, cur.zone).get(userId) : null;
       io.emit('game_world_chat_message', { userId, name: p?.name || '???', text: text.trim().slice(0, 140), at: Date.now() });
+    });
+
+    // Chat Bang Hội: chỉ phát cho thành viên cùng bang (room 'guild_{id}' đã join sẵn lúc connect)
+    socket.on('game_guild_chat', async ({ text }) => {
+      if (!text || !text.trim()) return;
+      try {
+        const char = await Character.findOne({ user: userId }).select('guildId name');
+        if (!char?.guildId) return;
+        io.to(`guild_${char.guildId}`).emit('game_guild_chat_message', { userId, name: char.name, text: text.trim().slice(0, 140), at: Date.now() });
+      } catch { /* ignore */ }
+    });
+
+    // Chat Bang Hội: chỉ thành viên cùng Bang Hội (phòng riêng, cập nhật realtime khi vào/rời bang) nhận được
+    socket.on('game_guild_chat', ({ text }) => {
+      const guildRoom = [...socket.rooms].find((r) => r.startsWith('guild_'));
+      if (!text || !text.trim() || !guildRoom) return;
+      const cur = socketMap.get(socket.id);
+      const p = cur ? getZoneRoom(cur.mapId, cur.zone).get(userId) : null;
+      io.to(guildRoom).emit('game_guild_chat_message', { userId, name: p?.name || '???', text: text.trim().slice(0, 140), at: Date.now() });
     });
 
     socket.on('game_leave_map', () => leaveCurrentZone(socket));

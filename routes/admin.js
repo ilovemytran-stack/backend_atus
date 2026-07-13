@@ -248,4 +248,33 @@ router.put('/game/characters/:id/complete-quests', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
+// ===== THÔNG BÁO HỆ THỐNG (popup toàn server cho mọi người dùng) =====
+const Announcement = require('../models/Announcement');
+
+router.get('/announcements', async (req, res) => {
+  try {
+    const list = await Announcement.find().sort('-createdAt').limit(50).populate('createdBy', 'username displayName');
+    res.json({ success: true, announcements: list });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+router.post('/announcements', async (req, res) => {
+  try {
+    const text = (req.body.text || '').trim();
+    if (!text) return res.status(400).json({ success: false, message: 'Nội dung thông báo không được để trống' });
+    if (text.length > 1000) return res.status(400).json({ success: false, message: 'Nội dung tối đa 1000 ký tự' });
+    // chỉ giữ 1 thông báo đang hoạt động tại 1 thời điểm — thông báo mới sẽ thay thế thông báo cũ
+    await Announcement.updateMany({ active: true }, { active: false });
+    const ann = await Announcement.create({ text, createdBy: req.user._id, active: true });
+    res.json({ success: true, announcement: ann });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+router.delete('/announcements/:id', async (req, res) => {
+  try {
+    await Announcement.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
 module.exports = router;

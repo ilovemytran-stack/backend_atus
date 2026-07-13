@@ -15,6 +15,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: process.env.CLIENT_URL || '*', methods: ['GET', 'POST'] }
 });
+app.set('io', io);
 
 // Middleware
 app.use(helmet({ crossOriginEmbedderPolicy: false }));
@@ -25,6 +26,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Rate limiting
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 20 }));
+app.use('/api/ai', rateLimit({ windowMs: 10 * 60 * 1000, max: 20, message: { success: false, message: 'Bạn hỏi AI quá nhanh, thử lại sau ít phút.' } }));
 app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 300 }));
 
 // Routes
@@ -37,9 +39,11 @@ app.use('/api/chat', require('./routes/chat'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/search', require('./routes/search'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/announcements', require('./routes/announcements'));
 app.use('/api/game', require('./routes/game'));
 app.use('/api/guild', require('./routes/guild'));
 app.use('/api/wallet', require('./routes/wallet'));
+app.use('/api/ai', require('./routes/ai'));
 
 // Health check
 app.get('/health', (_, res) => res.json({ status: 'ok', time: new Date() }));

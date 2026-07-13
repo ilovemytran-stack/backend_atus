@@ -2,10 +2,18 @@ const router = require('express').Router();
 const Guild = require('../models/Guild');
 const Character = require('../models/Character');
 const { protect } = require('../middleware/auth');
-const { guildXpToNextLevel } = require('../utils/guildLeveling');
 
 async function myChar(req) {
   return Character.findOne({ user: req.user._id });
+}
+
+function guildXpToNext(level) { return Math.round(1000 * Math.pow(level, 1.35)); }
+
+function syncSocketGuildRoom(req, userId, action, guildId) {
+  const io = req.app.get('io');
+  if (!io) return;
+  if (action === 'join') io.in(`user_${userId}`).socketsJoin(`guild_${guildId}`);
+  else io.in(`user_${userId}`).socketsLeave(`guild_${guildId}`);
 }
 
 // Danh sách Bang Hội để duyệt/tham gia
@@ -23,7 +31,7 @@ router.get('/list', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// Bang Hội của chính mình (kèm danh sách thành viên đầy đủ)
+// Bang Hội của chính mình (kèm danh sách thành viên đầy đủ + tiến độ EXP bang)
 router.get('/mine', protect, async (req, res) => {
   try {
     const char = await myChar(req);
@@ -34,7 +42,7 @@ router.get('/mine', protect, async (req, res) => {
       success: true,
       guild: {
         id: guild._id, name: guild.name, tag: guild.tag, description: guild.description,
-        level: guild.level, xp: guild.xp, xpToNext: guildXpToNextLevel(guild.level), maxMembers: guild.maxMembers,
+        level: guild.level, xp: guild.xp, xpToNext: guildXpToNext(guild.level), maxMembers: guild.maxMembers,
         leaderId: String(guild.leader._id),
         members: guild.members.map((m) => ({ id: m._id, name: m.name, level: m.level, classId: m.classId })),
       },
@@ -59,6 +67,7 @@ router.post('/create', protect, async (req, res) => {
     char.gold -= 500;
     char.guildId = guild._id;
     await char.save();
+    syncSocketGuildRoom(req, String(req.user._id), 'join', guild._id);
     res.json({ success: true, guildId: guild._id, character: { gold: char.gold } });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
@@ -75,6 +84,7 @@ router.post('/join', protect, async (req, res) => {
     await guild.save();
     char.guildId = guild._id;
     await char.save();
+    syncSocketGuildRoom(req, String(req.user._id), 'join', guild._id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
@@ -83,6 +93,7 @@ router.post('/leave', protect, async (req, res) => {
   try {
     const char = await myChar(req);
     if (!char?.guildId) return res.status(400).json({ success: false, message: 'Bạn chưa ở trong Bang Hội nào' });
+    const oldGuildId = char.guildId;
     const guild = await Guild.findById(char.guildId);
     if (guild) {
       guild.members = guild.members.filter((m) => String(m) !== String(char._id));
@@ -95,6 +106,7 @@ router.post('/leave', protect, async (req, res) => {
     }
     char.guildId = null;
     await char.save();
+    syncSocketGuildRoom(req, String(req.user._id), 'leave', oldGuildId);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
@@ -106,26 +118,10 @@ router.post('/kick', protect, async (req, res) => {
     const guild = await Guild.findById(char.guildId);
     if (!guild || String(guild.leader) !== String(char._id)) return res.status(403).json({ success: false, message: 'Chỉ Bang Chủ mới có quyền này' });
     if (String(req.body.charId) === String(char._id)) return res.status(400).json({ success: false, message: 'Không thể tự đuổi chính mình, dùng Rời Bang' });
-    const isMember = guild.members.some((m) => String(m) === String(req.body.charId));
-    if (!isMember) return res.status(400).json({ success: false, message: 'Người này không ở trong Bang Hội của bạn' });
     guild.members = guild.members.filter((m) => String(m) !== String(req.body.charId));
     await guild.save();
-    // Chỉ gỡ guildId nếu nó vẫn đang trỏ đúng về guild này — tránh race condition (mục tiêu vừa
-    // rời/bị đuổi khỏi guild này và tham gia guild khác ngay trước khi request này chạy tới).
-    await Character.updateOne({ _id: req.body.charId, guildId: guild._id }, { guildId: null });
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
-});
-
-// Bang Chủ tự giải tán Bang Hội — trước đây không có cách nào làm sạch (phải kick hết từng người)
-router.post('/disband', protect, async (req, res) => {
-  try {
-    const char = await myChar(req);
-    if (!char?.guildId) return res.status(400).json({ success: false, message: 'Bạn chưa ở trong Bang Hội nào' });
-    const guild = await Guild.findById(char.guildId);
-    if (!guild || String(guild.leader) !== String(char._id)) return res.status(403).json({ success: false, message: 'Chỉ Bang Chủ mới có quyền này' });
-    await Character.updateMany({ guildId: guild._id }, { guildId: null });
-    await Guild.deleteOne({ _id: guild._id });
+    const kicked = await Character.findByIdAndUpdate(req.body.charId, { guildId: null });
+    if (kicked) syncSocketGuildRoom(req, String(kicked.user), 'leave', guild._id);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });

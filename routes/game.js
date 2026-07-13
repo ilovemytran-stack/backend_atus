@@ -1,8 +1,8 @@
 const router = require('express').Router();
 const Character = require('../models/Character');
+const Guild = require('../models/Guild');
 const { protect } = require('../middleware/auth');
 const GD = require('../data/gameData');
-const { grantGuildXp } = require('../utils/guildLeveling');
 
 // ---- Nhiệm vụ (point 2 & 11 — NPC giao nhiệm vụ) — trải dài Lv1-60, thưởng XP tăng dần theo mốc cấp ----
 const QUESTS = [
@@ -52,6 +52,22 @@ function applyLevelUps(char) {
     }
   }
   return leveledUp;
+}
+
+function guildXpToNextLevel(level) { return Math.round(1000 * Math.pow(level, 1.35)); }
+
+// Bang Hội nhận 1 phần XP mỗi khi thành viên diệt quái/boss — cộng dồn, lên cấp mở thêm chỗ (maxMembers)
+async function grantGuildXp(guildId, amount) {
+  if (!guildId || amount <= 0) return;
+  const guild = await Guild.findById(guildId);
+  if (!guild) return;
+  guild.xp += amount;
+  while (guild.xp >= guildXpToNextLevel(guild.level)) {
+    guild.xp -= guildXpToNextLevel(guild.level);
+    guild.level += 1;
+    guild.maxMembers += 3; // mỗi cấp bang mở thêm 3 chỗ
+  }
+  await guild.save();
 }
 
 // Tính tiến độ hiện tại của 1 nhiệm vụ theo type — gộp về 1 chỗ để dễ thêm loại nhiệm vụ mới.
@@ -259,7 +275,7 @@ router.post('/character/kill-monster', protect, async (req, res) => {
     let drop, lootName;
     if (isBoss && map.hasBoss) {
       const continent = GD.CONTINENTS.find((c) => c.id === map.continentId);
-      const guardian = GD.BOSSES.find((b) => b.continentId === map.continentId);
+      const guardian = GD.BOSSES.find((b) => b.id === `b_${map.continentId}`);
       drop = GD.guardianBossStatsFor(continent, map.levelRange[1]);
       lootName = guardian?.name || continent.name;
     } else {
@@ -278,20 +294,19 @@ router.post('/character/kill-monster', protect, async (req, res) => {
 
     const leveledUp = applyLevelUps(char);
 
+    if (char.guildId) grantGuildXp(char.guildId, Math.round(drop.xp * (isBoss ? 0.35 : 0.15))).catch(() => {});
+
     // tiến độ nhiệm vụ diệt quái (đếm chung cho mọi nhiệm vụ loại 'kill')
     const kills = (char.questProgress.totalKills || 0) + 1;
     char.questProgress = { ...char.questProgress, totalKills: kills };
     char.markModified('questProgress');
 
     await char.save();
-
-    // Cộng KN Bang Hội tỉ lệ với KN nhân vật vừa nhận (boss/map khó -> KN Bang Hội cũng cao hơn tương ứng)
-    const guildXpGain = Math.max(1, Math.round(drop.xp * 0.2));
-    const guildResult = await grantGuildXp(char, guildXpGain).catch(() => null);
-
-    res.json({ success: true, character: publicChar(char), loot: { monster: lootName, xp: drop.xp, gold, gem: gemWon, isBoss: !!isBoss }, leveledUp, guild: guildResult });
+    res.json({ success: true, character: publicChar(char), loot: { monster: lootName, xp: drop.xp, gold, gem: gemWon, isBoss: !!isBoss }, leveledUp });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
+
+// point 9/11: mua đồ từ NPC (vũ khí / trang bị / vật phẩm hồi phục)
 router.post('/character/buy', protect, async (req, res) => {
   try {
     const { itemId, kind } = req.body; // kind: weapon | armor | consumable
