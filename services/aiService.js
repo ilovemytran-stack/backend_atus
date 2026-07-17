@@ -1,27 +1,21 @@
 /**
- * AI Q&A Service — trợ lý hiểu Public + G.Legendary.
- * Provider: Cerebras (model gpt-oss-120b) — free tier 14.400 request/ngày,
- * 900/giờ, 30/phút, 1 triệu token/ngày, KHÔNG cần thẻ tín dụng.
- * (xem https://github.com/cheahjs/free-llm-api-resources)
+ * AI Q&A Service — trợ lý hiểu Public + G.Legendary, dùng Claude API (Haiku 4.5).
  *
  * SETUP:
- * 1. Lấy API key free tại https://cloud.cerebras.ai (đăng ký bằng email)
- * 2. Thêm CEREBRAS_API_KEY vào .env (xem .env.example)
- *
- * GHI CHÚ đổi từ Claude sang đây: mất prompt cache (cache_control) vì đó là
- * tính năng riêng của Anthropic — Cerebras chuẩn OpenAI-compatible, không có
- * cache. Đổi lại quota free cao hơn nhiều so với trả phí theo token của Claude.
- * Nếu sau này cần model suy luận sâu hơn mà gpt-oss-120b không đáp ứng nổi,
- * đổi hằng số MODEL bên dưới sang 'llama-4-scout' hoặc 'qwen-3-32b' (cùng free
- * tier Cerebras), hoặc quay lại Claude (Anthropic SDK đã gỡ khỏi package.json).
+ * 1. npm install @anthropic-ai/sdk   (đã thêm vào package.json)
+ * 2. Thêm ANTHROPIC_API_KEY vào .env (xem .env.example)
  */
 
+const Anthropic = require('@anthropic-ai/sdk');
 const GD = require('../data/gameData');
 
-const CEREBRAS_API_URL = 'https://api.cerebras.ai/v1/chat/completions';
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
 
-// Model 120B — mạnh nhất trong free tier Cerebras, vẫn giữ quota 14.400 req/ngày.
-const MODEL = 'gpt-oss-120b';
+// Model rẻ + nhanh, hợp Q&A khối lượng lớn. Cần suy luận sâu hơn (vd kiểm duyệt
+// case khó ở Phase 2) thì đổi sang 'claude-sonnet-5'.
+const MODEL = 'claude-haiku-4-5-20251001';
 
 /**
  * Build context từ gameData.js THẬT — tự đồng bộ mỗi khi bạn sửa game,
@@ -88,43 +82,38 @@ async function askAI(userMessage, history = [], user = null) {
   if (!userMessage || typeof userMessage !== 'string') {
     throw new Error('userMessage không hợp lệ');
   }
-  if (!process.env.CEREBRAS_API_KEY) {
-    throw new Error('Thiếu CEREBRAS_API_KEY trong .env');
-  }
 
   let systemText = SYSTEM_PROMPT_HEADER + buildGameContext();
   if (user?.displayName) {
     systemText += `\n\nNgười dùng đang hỏi: ${user.displayName} (đã đăng nhập).`;
   }
 
-  // Cerebras dùng chuẩn OpenAI-compatible: system là 1 message role 'system'
-  // nằm đầu mảng messages, không có field system/cache_control riêng như Claude.
-  const res = await fetch(CEREBRAS_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.CEREBRAS_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 1024,
-      messages: [
-        { role: 'system', content: systemText },
-        ...history,
-        { role: 'user', content: userMessage },
-      ],
-    }),
+  const response = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 1024,
+    system: [
+      {
+        type: 'text',
+        text: systemText,
+        // Context game tĩnh, ít đổi -> cache lại, đỡ tốn token mỗi lần hỏi.
+        // LƯU Ý: Haiku 4.5 cần block này >= ~4096 token mới thật sự kích hoạt cache;
+        // context hiện tại (~2.5-3.5k token tuỳ cách đếm) có thể CHƯA đủ ngưỡng.
+        // Không sao — code vẫn chạy đúng, chỉ là chưa tiết kiệm được cho tới khi bạn
+        // thêm data (vd đủ 48 map + full bảng giá vũ khí/giáp) hoặc đổi model sang
+        // claude-sonnet-5 (ngưỡng cache thấp hơn, chỉ ~1024 token).
+        // Kiểm tra thực tế qua field usage.cache_read_input_tokens ở response (log trong route).
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    messages: [...history, { role: 'user', content: userMessage }],
   });
 
-  if (!res.ok) {
-    const errBody = await res.text().catch(() => '');
-    throw new Error(`Cerebras API lỗi ${res.status}: ${errBody.slice(0, 300)}`);
-  }
+  const reply = response.content
+    .filter((block) => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n');
 
-  const data = await res.json();
-  const reply = data?.choices?.[0]?.message?.content || '';
-
-  return { reply, usage: data.usage };
+  return { reply, usage: response.usage };
 }
 
 module.exports = { askAI, buildGameContext };

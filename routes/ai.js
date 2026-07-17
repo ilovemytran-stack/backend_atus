@@ -22,10 +22,7 @@ router.post('/chat', optionalAuth, async (req, res) => {
       : [];
 
     const { reply, usage } = await askAI(message.trim(), trimmedHistory, req.user);
-    if (usage) {
-      console.log(`[routes/ai] tokens: prompt=${usage.prompt_tokens} completion=${usage.completion_tokens} total=${usage.total_tokens} (free tier Cerebras: 1tr token/ngày)`);
-    }
-    res.json({ success: true, reply });
+    res.json({ success: true, reply, cacheHit: (usage?.cache_read_input_tokens || 0) > 0 });
   } catch (err) {
     console.error('[routes/ai] /chat error:', err.message);
     res.status(500).json({ success: false, message: 'AI đang gặp sự cố, thử lại sau' });

@@ -275,7 +275,7 @@ router.post('/character/kill-monster', protect, async (req, res) => {
     let drop, lootName;
     if (isBoss && map.hasBoss) {
       const continent = GD.CONTINENTS.find((c) => c.id === map.continentId);
-      const guardian = GD.BOSSES.find((b) => b.id === `b_${map.continentId}`);
+      const guardian = GD.BOSSES.find((b) => b.continent === map.continentId);
       drop = GD.guardianBossStatsFor(continent, map.levelRange[1]);
       lootName = guardian?.name || continent.name;
     } else {
