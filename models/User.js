@@ -26,6 +26,7 @@ const userSchema = new mongoose.Schema({
   refreshToken: String,
   role: { type: String, enum: ['user', 'moderator', 'admin'], default: 'user' },
   vipCoin: { type: Number, default: 0, min: 0 },
+  walletBalance: { type: Number, default: 0, min: 0 }, // Số dư ví Root Shop (VNĐ thật, tách biệt hoàn toàn với Xu VIP trong game)
   isBanned: { type: Boolean, default: false },
   banReason: { type: String, default: '' },
   usernameChangedAt: { type: Date, default: null },

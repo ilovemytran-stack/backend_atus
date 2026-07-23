@@ -116,4 +116,25 @@ async function askAI(userMessage, history = [], user = null) {
   return { reply, usage: response.usage };
 }
 
-module.exports = { askAI, buildGameContext };
+// Sinh title/mô tả/hashtag/caption gợi ý cho 1 video ngắn (dùng trong
+// Atelier). Tách riêng khỏi askAI() ở trên vì khác hẳn nhiệm vụ — không phải
+// Q&A game, không cần lịch sử hội thoại hay context game, và trả JSON thay
+// vì text tự do.
+const CAPTION_SYSTEM_PROMPT = 'Bạn là trợ lý sáng tạo nội dung video ngắn cho mạng xã hội. CHỈ trả lời bằng một object JSON hợp lệ duy nhất, KHÔNG kèm markdown, không giải thích thêm, đúng schema: {"title": string, "description": string, "hashtags": string[4], "caption": string}. Viết bằng tiếng Việt tự nhiên, giọng điệu phù hợp mạng xã hội, ngắn gọn, không dùng emoji quá nhiều.';
+
+async function generateCaption(promptText) {
+  if (!promptText || typeof promptText !== 'string') {
+    throw new Error('promptText không hợp lệ');
+  }
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-5',
+    max_tokens: 1000,
+    messages: [{ role: 'user', content: CAPTION_SYSTEM_PROMPT + '\n\nMô tả video của người dùng: ' + promptText }],
+  });
+  const textOut = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+  const parsed = JSON.parse(textOut.replace(/^```json\s*|```\s*$/g, ''));
+  if (!parsed || !parsed.title) throw new Error('parse-fail');
+  return parsed;
+}
+
+module.exports = { askAI, buildGameContext, generateCaption };

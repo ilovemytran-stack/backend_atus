@@ -1,6 +1,6 @@
 const router = require('express').Router();
-const { optionalAuth } = require('../middleware/auth');
-const { askAI } = require('../services/aiService');
+const { protect, optionalAuth } = require('../middleware/auth');
+const { askAI, generateCaption } = require('../services/aiService');
 
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_HISTORY_TURNS = 10;
@@ -26,6 +26,21 @@ router.post('/chat', optionalAuth, async (req, res) => {
   } catch (err) {
     console.error('[routes/ai] /chat error:', err.message);
     res.status(500).json({ success: false, message: 'AI đang gặp sự cố, thử lại sau' });
+  }
+});
+
+// Sinh title/mô tả/hashtag/caption gợi ý cho Atelier — cần đăng nhập vì gắn với nội dung người dùng đang tạo
+router.post('/caption', protect, async (req, res) => {
+  try {
+    const { promptText } = req.body || {};
+    if (!promptText || typeof promptText !== 'string' || !promptText.trim()) {
+      return res.status(400).json({ success: false, message: 'Thiếu mô tả video' });
+    }
+    const result = await generateCaption(promptText.trim());
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[routes/ai] /caption error:', err.message);
+    res.status(500).json({ success: false, message: 'Không tạo được gợi ý lúc này' });
   }
 });
 

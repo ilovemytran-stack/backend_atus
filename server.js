@@ -21,6 +21,14 @@ app.set('io', io);
 app.use(helmet({ crossOriginEmbedderPolicy: false }));
 app.use(compression());
 app.use(cors({ origin: process.env.CLIENT_URL || '*', credentials: true }));
+
+// Webhook SePay: PHẢI đăng ký trước express.json() và dùng express.raw(),
+// vì SePay ký HMAC-SHA256 trên raw bytes của body — nếu đứng sau
+// express.json(), body sẽ bị parse thành object trước và chữ ký luôn sai.
+// Đường dẫn giữ đúng "/weebhook/sepay" (thừa 1 chữ "e") vì đó là URL đã
+// đăng ký thật trên dashboard SePay — đổi lại là webhook sẽ 404.
+app.post('/weebhook/sepay', express.raw({ type: '*/*' }), require('./routes/sepayWebhook'));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -43,6 +51,11 @@ app.use('/api/announcements', require('./routes/announcements'));
 app.use('/api/game', require('./routes/game'));
 app.use('/api/guild', require('./routes/guild'));
 app.use('/api/wallet', require('./routes/wallet'));
+app.use('/api/shop/wallet', require('./routes/shopWallet'));
+app.use('/api/shop/products', require('./routes/shopProducts'));
+app.use('/api/shop/orders', require('./routes/shopOrders'));
+app.use('/api/media', require('./routes/media'));
+app.use('/api/atelier/projects', require('./routes/atelierProjects'));
 app.use('/api/ai', require('./routes/ai'));
 
 // Health check
@@ -53,7 +66,22 @@ require('./utils/socket')(io);
 
 // MongoDB
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('✅ MongoDB connected'))
+  .then(async () => {
+    console.log('✅ MongoDB connected');
+    // Nạp 12 sản phẩm mẫu ban đầu của Root Shop nếu collection còn trống —
+    // chỉ chạy 1 lần, không đụng dữ liệu nếu đã có sản phẩm nào (kể cả do
+    // người bán tự thêm).
+    try {
+      const ShopProduct = require('./models/ShopProduct');
+      const count = await ShopProduct.countDocuments();
+      if (count === 0) {
+        await ShopProduct.insertMany(require('./data/shopSeedProducts'));
+        console.log('✅ Đã nạp sản phẩm mẫu Root Shop');
+      }
+    } catch (seedErr) {
+      console.error('❌ Lỗi nạp sản phẩm mẫu:', seedErr.message);
+    }
+  })
   .catch(err => console.error('❌ MongoDB error:', err));
 
 const PORT = process.env.PORT || 5000;
