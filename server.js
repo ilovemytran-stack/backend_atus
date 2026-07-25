@@ -85,6 +85,22 @@ mongoose.connect(process.env.MONGODB_URI)
   .catch(err => console.error('❌ MongoDB error:', err));
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+
+  // Cảnh báo sớm các biến .env "mềm" (server vẫn chạy được, nhưng thiếu thì
+  // tính năng liên quan sẽ lỗi khi user bấm vào) — gom 1 chỗ để dễ thấy lúc
+  // deploy thay vì phải đợi user report từng cái.
+  const optionalEnvGroups = [
+    { vars: ['CEREBRAS_API_KEY'], feature: 'Trợ lý AI + gợi ý caption Atelier' },
+    { vars: ['SEPAY_SECRET'], feature: 'Xác nhận nạp ví tự động (webhook SePay)' },
+    { vars: ['BANK_BIN', 'BANK_ACCOUNT_NUMBER'], feature: 'Nạp ví qua chuyển khoản (QR VietQR)' },
+    { vars: ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'], feature: 'Upload ảnh/video' },
+  ];
+  optionalEnvGroups.forEach(({ vars, feature }) => {
+    const missing = vars.filter((v) => !process.env[v]);
+    if (missing.length) console.warn(`⚠️  Thiếu ${missing.join(', ')} trong .env — "${feature}" sẽ không hoạt động.`);
+  });
+});
 
 module.exports = { io };

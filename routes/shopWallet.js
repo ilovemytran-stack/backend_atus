@@ -40,6 +40,13 @@ router.post('/topup', protect, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Số tiền nạp tối thiểu 10.000đ' });
     }
 
+    // Chặn sớm: nếu chưa cấu hình ngân hàng thì không tạo đơn treo (user sẽ
+    // có mã nhưng không có QR để quét, không bao giờ thanh toán được).
+    const qrUrlPreview = buildQrUrl({ amount, code: 'PREVIEW' });
+    if (!qrUrlPreview) {
+      return res.status(503).json({ success: false, message: 'Nạp tiền qua chuyển khoản đang tạm ngưng (chưa cấu hình ngân hàng), thử lại sau' });
+    }
+
     const code = await generateUniqueCode();
     const pending = await PendingPayment.create({
       code,
