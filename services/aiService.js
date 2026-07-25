@@ -1,21 +1,37 @@
 /**
- * AI Q&A Service — trợ lý hiểu Public + G.Legendary, dùng Claude API (Haiku 4.5).
+ * AI Q&A Service — trợ lý hiểu Public + G.Legendary, dùng Cerebras (Llama, free tier).
  *
  * SETUP:
- * 1. npm install @anthropic-ai/sdk   (đã thêm vào package.json)
- * 2. Thêm ANTHROPIC_API_KEY vào .env (xem .env.example)
+ * 1. npm install @cerebras/cerebras_cloud_sdk   (đã thêm vào package.json)
+ * 2. Thêm CEREBRAS_API_KEY vào .env (xem .env.example) — lấy free tại
+ *    https://cloud.cerebras.ai (chỉ cần email, không cần thẻ)
+ *
+ * ĐỔI TỪ ANTHROPIC SANG CEREBRAS (lịch sử): code bản trước dùng Anthropic SDK
+ * nhưng .env chỉ có CEREBRAS_API_KEY (không có ANTHROPIC_API_KEY) — không khớp
+ * nên trợ lý AI không chạy. File này viết lại để dùng đúng Cerebras, API dạng
+ * OpenAI-compatible (khác cấu trúc response so với Anthropic — xem ghi chú ở
+ * askAI()/generateCaption() bên dưới nếu sau này muốn đổi lại provider khác).
  */
 
-const Anthropic = require('@anthropic-ai/sdk');
+const Cerebras = require('@cerebras/cerebras_cloud_sdk');
 const GD = require('../data/gameData');
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+const cerebras = new Cerebras({
+  apiKey: process.env.CEREBRAS_API_KEY,
 });
 
-// Model rẻ + nhanh, hợp Q&A khối lượng lớn. Cần suy luận sâu hơn (vd kiểm duyệt
-// case khó ở Phase 2) thì đổi sang 'claude-sonnet-5'.
-const MODEL = 'claude-haiku-4-5-20251001';
+if (!process.env.CEREBRAS_API_KEY) {
+  console.warn(
+    '[aiService] CẢNH BÁO: thiếu CEREBRAS_API_KEY trong .env — trợ lý AI (/api/ai/chat) ' +
+    'và gợi ý caption Atelier (/api/ai/caption) sẽ báo lỗi mỗi lần gọi. Lấy key free tại ' +
+    'https://cloud.cerebras.ai rồi thêm vào .env (xem .env.example).'
+  );
+}
+
+// Model nhanh, hợp Q&A khối lượng lớn, miễn phí. Cần chất lượng cao hơn (vd
+// caption Atelier cần bám schema JSON chặt) thì dùng model lớn hơn bên dưới.
+const MODEL_FAST = 'llama3.1-8b';
+const MODEL_QUALITY = 'llama-3.3-70b';
 
 /**
  * Build context từ gameData.js THẬT — tự đồng bộ mỗi khi bạn sửa game,
@@ -88,50 +104,48 @@ async function askAI(userMessage, history = [], user = null) {
     systemText += `\n\nNgười dùng đang hỏi: ${user.displayName} (đã đăng nhập).`;
   }
 
-  const response = await anthropic.messages.create({
-    model: MODEL,
+  // API kiểu OpenAI-compatible: system prompt là 1 message role:'system' đầu
+  // tiên trong mảng messages, KHÔNG phải tham số `system` riêng như Anthropic.
+  // Cerebras cũng không có cache_control (prompt caching) như Anthropic — bỏ
+  // qua tối ưu đó, chấp nhận trả full context mỗi lần gọi (đổi lại là tốc độ
+  // inference của Cerebras rất nhanh nên vẫn ổn).
+  const response = await cerebras.chat.completions.create({
+    model: MODEL_FAST,
     max_tokens: 1024,
-    system: [
-      {
-        type: 'text',
-        text: systemText,
-        // Context game tĩnh, ít đổi -> cache lại, đỡ tốn token mỗi lần hỏi.
-        // LƯU Ý: Haiku 4.5 cần block này >= ~4096 token mới thật sự kích hoạt cache;
-        // context hiện tại (~2.5-3.5k token tuỳ cách đếm) có thể CHƯA đủ ngưỡng.
-        // Không sao — code vẫn chạy đúng, chỉ là chưa tiết kiệm được cho tới khi bạn
-        // thêm data (vd đủ 48 map + full bảng giá vũ khí/giáp) hoặc đổi model sang
-        // claude-sonnet-5 (ngưỡng cache thấp hơn, chỉ ~1024 token).
-        // Kiểm tra thực tế qua field usage.cache_read_input_tokens ở response (log trong route).
-        cache_control: { type: 'ephemeral' },
-      },
+    messages: [
+      { role: 'system', content: systemText },
+      ...history,
+      { role: 'user', content: userMessage },
     ],
-    messages: [...history, { role: 'user', content: userMessage }],
   });
 
-  const reply = response.content
-    .filter((block) => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n');
+  const reply = response.choices?.[0]?.message?.content || '';
 
+  // usage.cache_read_input_tokens (Anthropic) không tồn tại ở Cerebras nên
+  // luôn undefined -> route /chat tính cacheHit = false, không lỗi, chỉ là
+  // chỉ báo "cache hit" sẽ luôn tắt (đúng thực tế, không phải bug).
   return { reply, usage: response.usage };
 }
 
 // Sinh title/mô tả/hashtag/caption gợi ý cho 1 video ngắn (dùng trong
 // Atelier). Tách riêng khỏi askAI() ở trên vì khác hẳn nhiệm vụ — không phải
 // Q&A game, không cần lịch sử hội thoại hay context game, và trả JSON thay
-// vì text tự do.
+// vì text tự do. Dùng model chất lượng cao hơn vì cần bám đúng schema JSON.
 const CAPTION_SYSTEM_PROMPT = 'Bạn là trợ lý sáng tạo nội dung video ngắn cho mạng xã hội. CHỈ trả lời bằng một object JSON hợp lệ duy nhất, KHÔNG kèm markdown, không giải thích thêm, đúng schema: {"title": string, "description": string, "hashtags": string[4], "caption": string}. Viết bằng tiếng Việt tự nhiên, giọng điệu phù hợp mạng xã hội, ngắn gọn, không dùng emoji quá nhiều.';
 
 async function generateCaption(promptText) {
   if (!promptText || typeof promptText !== 'string') {
     throw new Error('promptText không hợp lệ');
   }
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-5',
+  const response = await cerebras.chat.completions.create({
+    model: MODEL_QUALITY,
     max_tokens: 1000,
-    messages: [{ role: 'user', content: CAPTION_SYSTEM_PROMPT + '\n\nMô tả video của người dùng: ' + promptText }],
+    messages: [
+      { role: 'system', content: CAPTION_SYSTEM_PROMPT },
+      { role: 'user', content: 'Mô tả video của người dùng: ' + promptText },
+    ],
   });
-  const textOut = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+  const textOut = (response.choices?.[0]?.message?.content || '').trim();
   const parsed = JSON.parse(textOut.replace(/^```json\s*|```\s*$/g, ''));
   if (!parsed || !parsed.title) throw new Error('parse-fail');
   return parsed;
