@@ -26,3 +26,13 @@ services:
         sync: false
       - key: CLIENT_URL
         sync: false
+      - key: CEREBRAS_API_KEY
+        sync: false
+      - key: SEPAY_SECRET
+        sync: false
+      - key: BANK_BIN
+        sync: false
+      - key: BANK_ACCOUNT_NUMBER
+        sync: false
+      - key: BANK_ACCOUNT_NAME
+        sync: false
