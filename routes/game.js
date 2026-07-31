@@ -10,13 +10,16 @@ const QUESTS = [
   { id: 'q_gear_up', name: 'Mua 1 vũ khí từ thợ rèn', desc: 'Ghé Thợ Rèn Vũ Khí sắm món đầu tiên.', type: 'buy_weapon', target: 1, reward: { xp: 40, gem: 5 } },
   { id: 'q_armor_up', name: 'Trang bị 1 món giáp', desc: 'Mặc bất kỳ giáp nào vào người.', type: 'equip_armor', target: 1, reward: { xp: 40, gold: 60 } },
   { id: 'q_explorer', name: 'Đạt cấp độ 10', desc: 'Lên cấp 10 để mở Thách Đấu Thần Linh đầu tiên.', type: 'reach_level', target: 10, reward: { xp: 100, gold: 150, gem: 10 } },
-  { id: 'q_hunter', name: 'Diệt 30 quái', desc: 'Tích luỹ 30 lượt hạ quái.', type: 'kill', target: 30, reward: { xp: 150, gold: 200 } },
+  // q_hunter/q_wealthy/q_slayer: tăng target (theo yêu cầu "làm nhiệm vụ khó hơn") — cộng thêm
+  // việc vàng/ngọc rơi ít hơn ở scaleMonster() phía trên, các nhiệm vụ tích luỹ này giờ tốn
+  // nhiều thời gian hơn hẳn bản trước, đúng hướng "khó hơn" chứ không chỉ số đích tăng suông.
+  { id: 'q_hunter', name: 'Diệt 45 quái', desc: 'Tích luỹ 45 lượt hạ quái.', type: 'kill', target: 45, reward: { xp: 150, gold: 200 } },
   { id: 'q_rising_star', name: 'Đạt cấp độ 20', desc: 'Chứng tỏ bản lĩnh ở cấp 20.', type: 'reach_level', target: 20, reward: { xp: 250, gold: 300, gem: 20 } },
-  { id: 'q_wealthy', name: 'Tích luỹ 1.000 vàng', desc: 'Buôn bán, săn quái để dư dả hơn.', type: 'earn_gold', target: 1000, reward: { xp: 200, gem: 15 } },
+  { id: 'q_wealthy', name: 'Tích luỹ 1.500 vàng', desc: 'Buôn bán, săn quái để dư dả hơn.', type: 'earn_gold', target: 1500, reward: { xp: 200, gem: 15 } },
   { id: 'q_first_duel', name: 'Thắng 1 Thách Đấu Thần Linh', desc: 'Đánh bại một vị Thần để nhận phước lành.', type: 'win_duel', target: 1, reward: { xp: 250, gold: 250, gem: 20 } },
   { id: 'q_veteran', name: 'Đạt cấp độ 30', desc: 'Nửa chặng đường tới đỉnh cao.', type: 'reach_level', target: 30, reward: { xp: 400, gold: 500, gem: 30 } },
   { id: 'q_wanderer', name: 'Đặt chân đến 4 lục địa', desc: 'Khám phá ít nhất 4 lục địa khác nhau.', type: 'visit_continents', target: 4, reward: { xp: 500, gem: 35 } },
-  { id: 'q_slayer', name: 'Diệt 100 quái', desc: 'Trở thành tay săn quái lão luyện.', type: 'kill', target: 100, reward: { xp: 600, gold: 500 } },
+  { id: 'q_slayer', name: 'Diệt 160 quái', desc: 'Trở thành tay săn quái lão luyện.', type: 'kill', target: 160, reward: { xp: 600, gold: 500 } },
   { id: 'q_champion', name: 'Đạt cấp độ 40', desc: 'Sức mạnh vượt trội hơn hẳn người thường.', type: 'reach_level', target: 40, reward: { xp: 700, gold: 900, gem: 50 } },
   { id: 'q_blessed', name: 'Thắng 3 Thách Đấu Thần Linh', desc: 'Được 3 vị Thần khác nhau ban phước.', type: 'win_duel', target: 3, reward: { xp: 800, gold: 600, gem: 40 } },
   { id: 'q_master', name: 'Đạt cấp độ 50', desc: 'Chỉ còn một bước nữa tới đỉnh.', type: 'reach_level', target: 50, reward: { xp: 1200, gold: 1500, gem: 70 } },
@@ -51,6 +54,7 @@ function applyLevelUps(char) {
       }
     }
   }
+  if (leveledUp.length) syncPetProgression(char);
   return leveledUp;
 }
 
@@ -111,7 +115,52 @@ function findGear(itemId, kind) {
   if (!itemId) return null;
   if (itemId.startsWith('starter_')) return kind === 'weapon' ? GD.STARTER_GEAR.weapons[itemId] : GD.STARTER_GEAR.armor[itemId];
   if (itemId.startsWith('special_')) return GD.SPECIAL_ITEMS[itemId];
+  if (itemId.startsWith('super_')) return GD.SUPER_ITEMS[itemId];
   return kind === 'weapon' ? GD.WEAPONS[itemId] : GD.ARMOR[itemId];
+}
+
+// ---- Pet: đồng bộ HP/Ki/ATK/DEF trực tiếp theo người chơi + hệ số Thường/VIP (mục 5 bản spec), có trần riêng ----
+function computePetStats(playerStats, tier) {
+  const mult = GD.PET_TIER_MULT[tier] || 1;
+  const hpCap = tier === 'vip' ? GD.STAT_CAPS.HP_PET_VIP : GD.STAT_CAPS.HP_PET_NORMAL;
+  const dmgCap = tier === 'vip' ? GD.STAT_CAPS.DMG_PET_VIP : GD.STAT_CAPS.DMG_PET_NORMAL;
+  return {
+    hp: Math.min(Math.round(playerStats.hp * mult), hpCap),
+    ki: Math.min(Math.round(playerStats.ki * mult), GD.STAT_CAPS.KI_ALL),
+    atk: Math.min(Math.round(playerStats.atk * mult), dmgCap),
+    def: Math.min(Math.round(playerStats.def * mult), GD.STAT_CAPS.ARMOR_ALL),
+  };
+}
+
+// Roll skill2/skill3/skill4 khi pet (đồng bộ level người chơi) vừa đủ điều kiện mở khoá, và tự hồi
+// sinh khi đã hết hạn chết. Gọi TRƯỚC publicChar ở mọi nơi có thể làm char lên cấp / có pet mới.
+function syncPetProgression(char) {
+  if (!char.pets || !char.pets.slots || !char.pets.slots.length) return false;
+  let changed = false;
+  const now = Date.now();
+  char.pets.slots.forEach((pet) => {
+    if (char.level >= 20 && pet.skill2Version == null) { pet.skill2Version = 1 + Math.floor(Math.random() * 4); changed = true; }
+    if (char.level >= 40 && pet.skill3Version == null) { pet.skill3Version = 1 + Math.floor(Math.random() * 2); changed = true; }
+    if (char.level >= 60 && !pet.hasSkill4) { pet.hasSkill4 = true; changed = true; }
+    if (pet.deadUntil && pet.deadUntil.getTime() <= now) { pet.deadUntil = null; changed = true; }
+  });
+  return changed;
+}
+
+function publicPets(char, stats) {
+  if (!char.pets || !char.pets.slots) return [];
+  return char.pets.slots.map((pet, idx) => {
+    const def = GD.PETS[pet.defId];
+    if (!def) return null;
+    return {
+      slot: idx, role: idx === 0 ? 'daica' : 'tieude', defId: pet.defId, name: def.name, tier: def.tier,
+      portrait: def.portrait, diePortrait: def.diePortrait, frameCount: def.frameCount,
+      mode: pet.mode, skill2Version: pet.skill2Version, skill3Version: pet.skill3Version, hasSkill4: pet.hasSkill4,
+      isDead: !!(pet.deadUntil && pet.deadUntil.getTime() > Date.now()),
+      deadUntil: pet.deadUntil, obtainedAt: pet.obtainedAt,
+      stats: computePetStats(stats, def.tier),
+    };
+  }).filter(Boolean);
 }
 
 function computeStats(char) {
@@ -141,17 +190,40 @@ function computeStats(char) {
   const hasFullSet = specialCount >= 4;
   if (hasFullSet) { atk += GD.SPECIAL_SET.setBonus.atk; def += GD.SPECIAL_SET.setBonus.def; hp += GD.SPECIAL_SET.setBonus.hp; }
 
+  // Bộ Trang Bị Siêu Cấp (Super Set — GLG mới, mạnh hơn 1 bậc so với Đặc Biệt)
+  const superCount = equippedIds.filter((id) => id && id.startsWith('super_')).length;
+  const hasFullSuperSet = superCount >= 4;
+  if (hasFullSuperSet) { atk += GD.SUPER_SET.setBonus.atk; def += GD.SUPER_SET.setBonus.def; hp += GD.SUPER_SET.setBonus.hp; }
+
   // phước lành từ thần linh (thắng thách đấu mỗi 10 cấp) — mỗi phước +chỉ số nhỏ, vĩnh viễn
   const blessingCount = (char.godBlessings || []).length;
   hp += blessingCount * 25; atk += blessingCount * 3; def += blessingCount * 2;
 
+  // cộng dồn vĩnh viễn từ đá cường hoá / huy hiệu (mục vật phẩm mới, dùng 1 lần)
+  const pb = char.permBonus || {};
+  atk += pb.atk || 0; def += pb.def || 0; hp += pb.hp || 0; spd += pb.spd || 0; crit += pb.crit || 0;
+
+  // Hào Quang (Aura) — % nhân sau khi đã cộng hết đồ + phước lành + cường hoá
+  if (char.hasAura) {
+    atk *= (1 + GD.AURA.buff.atkPct); def *= (1 + GD.AURA.buff.defPct); hp *= (1 + GD.AURA.buff.hpPct);
+    crit += GD.AURA.buff.critAdd;
+  }
+
   // công cụ GM: buff sát thương để test (mặc định x1 = không đổi)
   if (char.gmDamageMultiplier && char.gmDamageMultiplier !== 1) atk *= char.gmDamageMultiplier;
+
+  // Trần chỉ số (mục 10) — xem STAT_CAPS trong gameData.js để biết lý do các mốc này còn xa mới chạm tới
+  hp = Math.min(hp, GD.STAT_CAPS.HP_PLAYER);
+  ki = Math.min(ki, GD.STAT_CAPS.KI_ALL);
+  atk = Math.min(atk, GD.STAT_CAPS.DMG_PLAYER);
+  def = Math.min(def, GD.STAT_CAPS.ARMOR_ALL);
 
   return {
     hp: Math.round(hp), ki: Math.round(ki), atk: Math.round(atk), def: Math.round(def),
     spd: +spd.toFixed(2), crit: +crit.toFixed(1), mag: +mag.toFixed(1),
-    hasFullSpecialSet: hasFullSet, executeChance: hasFullSet ? GD.SPECIAL_SET.setBonus.executeChance : 0,
+    hasFullSpecialSet: hasFullSet, executeChance: Math.max(hasFullSet ? GD.SPECIAL_SET.setBonus.executeChance : 0, hasFullSuperSet ? GD.SUPER_SET.setBonus.executeChance : 0),
+    hasFullSuperSet, allDmgPct: hasFullSuperSet ? GD.SUPER_SET.setBonus.allDmgPct : 0,
+    hasAura: !!char.hasAura, auraLifestealPct: char.hasAura ? GD.AURA.buff.lifestealPct : 0, auraEnergyStealPct: char.hasAura ? GD.AURA.buff.energyStealPct : 0,
   };
 }
 
@@ -165,6 +237,9 @@ function publicChar(char) {
     ? char.equippedSkills
     : GD.CLASSES[char.classId].skills.filter((s) => s.type === 'active').map((s) => s.id);
   obj.quests = QUESTS.map((q) => ({ ...q, progress: questProgressValue(char, q), claimed: !!char.questProgress?.[q.id + '_claimed'] }));
+  obj.pets = publicPets(char, obj.stats);
+  obj.petSlot2Unlocked = !!(char.pets && char.pets.slot2Unlocked);
+  obj.hasAura = !!char.hasAura;
   return obj;
 }
 
@@ -186,6 +261,11 @@ router.get('/data', (req, res) => {
       godSpawnMs: GD.GOD_SPAWN_INTERVAL_MS, godLifespanMs: GD.GOD_LIFESPAN_MS,
       bossSpawnMs: GD.MEGA_BOSS_SPAWN_INTERVAL_MS, bossIdleDespawnMs: GD.MEGA_BOSS_IDLE_DESPAWN_MS,
     },
+    // ---- Pet & Hào Quang & Super Set (bản cập nhật GLG) ----
+    pets: GD.PETS, petTierMult: GD.PET_TIER_MULT, petDeathMs: GD.PET_DEATH_MS,
+    petSkill2Versions: GD.PET_SKILL2_VERSIONS, petSkill3Versions: GD.PET_SKILL3_VERSIONS, petSkill4: GD.PET_SKILL4,
+    aura: GD.AURA, superSet: GD.SUPER_SET, superItems: GD.SUPER_ITEMS, statCaps: GD.STAT_CAPS,
+    universalSkills: GD.UNIVERSAL_SKILLS, spriteManifest: GD.SPRITE_MANIFEST,
   });
 });
 
@@ -193,7 +273,7 @@ router.get('/data', (req, res) => {
 router.get('/character', protect, async (req, res) => {
   try {
     const char = await Character.findOne({ user: req.user._id });
-    if (char) { char.lastSeenAt = new Date(); await char.save(); }
+    if (char) { syncPetProgression(char); char.lastSeenAt = new Date(); await char.save(); }
     res.json({ success: true, character: char ? publicChar(char) : null });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
@@ -348,28 +428,232 @@ router.post('/character/equip', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
+function randInt(min, max) { return min + Math.floor(Math.random() * (max - min + 1)); }
+function rollPetDefId() {
+  // đúng tỉ lệ Thường/VIP như rơi từ boss (mục 7), rồi random đều trong 2 con của nhóm đó
+  const isVip = Math.random() < (GD.PET_DROP_CHANCE.vip / (GD.PET_DROP_CHANCE.normal + GD.PET_DROP_CHANCE.vip));
+  return isVip ? (Math.random() < 0.5 ? 'pet_ninja_vip' : 'pet_boy_vip') : (Math.random() < 0.5 ? 'pet_ghost' : 'pet_wolf');
+}
+
+// point mới: dùng vật phẩm tiêu hao — phần lớn hiệu ứng (hp/ki/buff tạm thời...) trả nguyên `effect`
+// để CLIENT tự áp dụng (giống cách hp_potion/might_potion đã hoạt động từ trước), nhưng các hiệu ứng
+// đụng tới dữ liệu lưu trữ vĩnh viễn (vàng, chỉ số cộng vĩnh viễn, pet, tên nhân vật) PHẢI xử lý ở
+// server để không thể gian lận từ phía client.
 router.post('/character/use-item', protect, async (req, res) => {
   try {
-    const { itemId } = req.body;
+    const { itemId, newName, petSlot } = req.body;
     const char = await Character.findOne({ user: req.user._id });
     if (!char) return res.status(404).json({ success: false, message: 'Chưa có nhân vật' });
+    const def = GD.CONSUMABLES[itemId];
+    if (!def) return res.status(400).json({ success: false, message: 'Vật phẩm không hợp lệ' });
     const inv = char.inventory.find((i) => i.itemId === itemId && i.kind === 'consumable');
     if (!inv || inv.qty < 1) return res.status(400).json({ success: false, message: 'Không có vật phẩm' });
+
+    // Nguyên liệu (mat_*) chỉ để bán, chìa khoá + rương phải mở cùng nhau qua route riêng
+    if (itemId.startsWith('mat_')) return res.status(400).json({ success: false, message: 'Vật phẩm này chỉ có thể bán cho NPC, không thể sử dụng trực tiếp' });
+    if (itemId.startsWith('key_') || itemId === 'treasure_chest') return res.status(400).json({ success: false, message: 'Dùng route mở rương (cần cả rương + 1 chìa khoá)' });
+
+    let extra = {};
+    if (itemId === 'bai_su_token') {
+      if (char.pets?.slot2Unlocked) return res.status(400).json({ success: false, message: 'Bạn đã mở ô Tiểu Đệ rồi' });
+      char.pets = char.pets || { slots: [] };
+      char.pets.slot2Unlocked = true;
+    } else if (itemId === 'change_pet_1' || itemId === 'change_pet_2') {
+      const idx = itemId === 'change_pet_1' ? 0 : 1;
+      const pet = char.pets?.slots?.[idx];
+      if (!pet) return res.status(400).json({ success: false, message: 'Ô pet này chưa có pet để đổi' });
+      let newDef = rollPetDefId();
+      while (newDef === pet.defId) newDef = rollPetDefId(); // đảm bảo đổi thật sự khác con cũ
+      pet.defId = newDef;
+    } else if (itemId.startsWith('reroll_skill2_pet') || itemId.startsWith('reroll_skill3_pet')) {
+      const idx = itemId.endsWith('pet1') ? 0 : 1;
+      const pet = char.pets?.slots?.[idx];
+      if (!pet) return res.status(400).json({ success: false, message: 'Ô pet này chưa có pet' });
+      if (itemId.startsWith('reroll_skill2')) {
+        if (pet.skill2Version == null) return res.status(400).json({ success: false, message: 'Pet chưa học Chiêu 2 (cần level 20)' });
+        pet.skill2Version = 1 + Math.floor(Math.random() * 4);
+      } else {
+        if (pet.skill3Version == null) return res.status(400).json({ success: false, message: 'Pet chưa học Chiêu 3 (cần level 40)' });
+        pet.skill3Version = 1 + Math.floor(Math.random() * 2);
+      }
+    } else if (itemId === 'feather_quill') {
+      const trimmed = (newName || '').trim().slice(0, 20);
+      if (trimmed.length < 2) return res.status(400).json({ success: false, message: 'Tên mới cần ít nhất 2 ký tự' });
+      char.name = trimmed;
+    } else if (itemId === 'coin_pouch') {
+      const gained = randInt(def.effect.randomGoldMin, def.effect.randomGoldMax);
+      char.gold += gained;
+      extra.goldGained = gained;
+    }
+
+    // Hiệu ứng cộng vĩnh viễn (đá cường hoá / huy hiệu) — luôn xử lý ở server bất kể item nào có key này
+    if (def.effect) {
+      const pb = char.permBonus || { atk: 0, def: 0, hp: 0, spd: 0, crit: 0 };
+      if (def.effect.permAtk) pb.atk = (pb.atk || 0) + def.effect.permAtk;
+      if (def.effect.permDef) pb.def = (pb.def || 0) + def.effect.permDef;
+      if (def.effect.permHp) pb.hp = (pb.hp || 0) + def.effect.permHp;
+      if (def.effect.permSpd) pb.spd = (pb.spd || 0) + def.effect.permSpd;
+      if (def.effect.permCrit) pb.crit = (pb.crit || 0) + def.effect.permCrit;
+      char.permBonus = pb;
+    }
+    void petSlot; // giữ tham số cho FE gọi thống nhất dù nhánh trên đã tự suy ra idx từ itemId
+
     inv.qty -= 1;
     if (inv.qty <= 0) char.inventory = char.inventory.filter((i) => i !== inv);
     await char.save();
-    res.json({ success: true, character: publicChar(char), effect: GD.CONSUMABLES[itemId]?.effect });
+    res.json({ success: true, character: publicChar(char), effect: def.effect, ...extra });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// Mở Rương Kho Báu: cần 1 "treasure_chest" + 1 "key_*" bất kỳ trong túi đồ, tiêu cả 2, thưởng theo tầng chìa khoá
+router.post('/character/chest/open', protect, async (req, res) => {
+  try {
+    const { keyId } = req.body;
+    const tier = GD.KEY_TIERS[keyId];
+    if (!tier) return res.status(400).json({ success: false, message: 'Chìa khoá không hợp lệ' });
+    const char = await Character.findOne({ user: req.user._id });
+    if (!char) return res.status(404).json({ success: false, message: 'Chưa có nhân vật' });
+    const chestInv = char.inventory.find((i) => i.itemId === 'treasure_chest' && i.kind === 'consumable');
+    const keyInv = char.inventory.find((i) => i.itemId === keyId && i.kind === 'consumable');
+    if (!chestInv || chestInv.qty < 1) return res.status(400).json({ success: false, message: 'Bạn chưa có Rương Kho Báu' });
+    if (!keyInv || keyInv.qty < 1) return res.status(400).json({ success: false, message: 'Bạn chưa có chìa khoá này' });
+    chestInv.qty -= 1; keyInv.qty -= 1;
+    char.inventory = char.inventory.filter((i) => i.qty > 0);
+    const gold = randInt(tier.gold[0], tier.gold[1]);
+    const gem = randInt(tier.gem[0], tier.gem[1]);
+    char.gold += gold; char.gem += gem;
+    const rewards = [`${gold} vàng`, gem > 0 ? `${gem} ngọc` : null].filter(Boolean);
+    if (Math.random() < tier.matChance) {
+      const matIds = Object.keys(GD.CONSUMABLES).filter((k) => k.startsWith('mat_'));
+      const matId = matIds[Math.floor(Math.random() * matIds.length)];
+      const invItem = char.inventory.find((i) => i.itemId === matId && i.kind === 'consumable');
+      if (invItem) invItem.qty += 1; else char.inventory.push({ itemId: matId, kind: 'consumable', qty: 1 });
+      rewards.push(GD.CONSUMABLES[matId].name);
+    }
+    if (tier.superShardChance && Math.random() < tier.superShardChance) {
+      const invItem = char.inventory.find((i) => i.itemId === 'gem_super' && i.kind === 'consumable');
+      if (invItem) invItem.qty += 1; else char.inventory.push({ itemId: 'gem_super', kind: 'consumable', qty: 1 });
+      rewards.push(GD.CONSUMABLES.gem_super.name);
+    }
+    await char.save();
+    res.json({ success: true, character: publicChar(char), rewards });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// Bán vật phẩm (chưa có route bán trước đây) — không bán được đồ đang trang bị / vật phẩm dropOnly không có sellPrice
+router.post('/character/sell', protect, async (req, res) => {
+  try {
+    const { itemId, kind, qty = 1 } = req.body;
+    const char = await Character.findOne({ user: req.user._id });
+    if (!char) return res.status(404).json({ success: false, message: 'Chưa có nhân vật' });
+    const inv = char.inventory.find((i) => i.itemId === itemId && i.kind === kind);
+    if (!inv || inv.qty < qty || qty < 1) return res.status(400).json({ success: false, message: 'Số lượng không hợp lệ' });
+    let unitPrice;
+    if (kind === 'consumable') {
+      const def = GD.CONSUMABLES[itemId];
+      unitPrice = def?.sellPrice ?? Math.round((def?.price || 0) * (def?.currency === 'gold' ? 0.4 : 0));
+    } else {
+      const equippedElsewhere = Object.values(char.equipment || {}).includes(itemId);
+      if (equippedElsewhere) return res.status(400).json({ success: false, message: 'Đang trang bị, hãy tháo ra trước khi bán' });
+      const item = findGear(itemId, kind);
+      unitPrice = Math.round((item?.price || 0) * 0.4);
+    }
+    if (!unitPrice) return res.status(400).json({ success: false, message: 'Vật phẩm này không bán được' });
+    const total = unitPrice * qty;
+    inv.qty -= qty;
+    if (inv.qty <= 0) char.inventory = char.inventory.filter((i) => i !== inv);
+    char.gold += total;
+    await char.save();
+    res.json({ success: true, character: publicChar(char), goldGained: total });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// point mới: đặt lệnh cho pet (def/atk/fl) — gõ trong chat hoặc bấm trong bảng Pet đều gọi route này
+router.post('/character/pet/mode', protect, async (req, res) => {
+  try {
+    const { slot, mode } = req.body;
+    if (!['def', 'atk', 'fl'].includes(mode)) return res.status(400).json({ success: false, message: 'Lệnh không hợp lệ (def/atk/fl)' });
+    const char = await Character.findOne({ user: req.user._id });
+    if (!char) return res.status(404).json({ success: false, message: 'Chưa có nhân vật' });
+    const pet = char.pets?.slots?.[slot];
+    if (!pet) return res.status(400).json({ success: false, message: 'Không có pet ở ô này' });
+    pet.mode = mode;
+    await char.save();
+    res.json({ success: true, character: publicChar(char) });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// Pet chết (client báo lên khi HP pet giả lập phía client chạm 0) — lưu deadUntil để còn đúng hạn
+// hồi sinh 3 phút xuyên suốt kể cả khi người chơi tải lại trang giữa chừng.
+router.post('/character/pet/death', protect, async (req, res) => {
+  try {
+    const { slot } = req.body;
+    const char = await Character.findOne({ user: req.user._id });
+    if (!char) return res.status(404).json({ success: false, message: 'Chưa có nhân vật' });
+    const pet = char.pets?.slots?.[slot];
+    if (!pet) return res.status(400).json({ success: false, message: 'Không có pet ở ô này' });
+    pet.deadUntil = new Date(Date.now() + GD.PET_DEATH_MS);
+    await char.save();
+    res.json({ success: true, character: publicChar(char) });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// Trao đổi Hào Quang tại NPC "Trưởng Lão Nhiệm Vụ" — chỉ tại Lục Địa Ánh Sáng, cần level 15+
+// và 3 trang bị đặc biệt (bất kỳ) + 3 đá nâng cấp trang bị đặc biệt.
+router.post('/character/aura/exchange', protect, async (req, res) => {
+  try {
+    const char = await Character.findOne({ user: req.user._id });
+    if (!char) return res.status(404).json({ success: false, message: 'Chưa có nhân vật' });
+    if (char.hasAura) return res.status(400).json({ success: false, message: 'Bạn đã sở hữu Hào Quang rồi' });
+    if (char.level < GD.AURA.reqLevel) return res.status(400).json({ success: false, message: `Cần đạt cấp ${GD.AURA.reqLevel} để đổi Hào Quang` });
+    const specialInv = char.inventory.filter((i) => i.kind === 'armor' || i.kind === 'weapon').filter((i) => i.itemId.startsWith('special_'));
+    const specialCount = specialInv.reduce((s, i) => s + i.qty, 0);
+    const stoneInv = char.inventory.find((i) => i.itemId === 'upgrade_stone_special' && i.kind === 'consumable');
+    if (specialCount < GD.AURA.costSpecialPieces) return res.status(400).json({ success: false, message: `Cần ${GD.AURA.costSpecialPieces} trang bị đặc biệt bất kỳ (đang có ${specialCount})` });
+    if (!stoneInv || stoneInv.qty < GD.AURA.costUpgradeStones) return res.status(400).json({ success: false, message: `Cần ${GD.AURA.costUpgradeStones} Đá Nâng Trang Bị Đặc Biệt` });
+    // trừ 3 trang bị đặc biệt bất kỳ (ưu tiên món KHÔNG đang trang bị trước để tránh tự tháo đồ người chơi)
+    let need = GD.AURA.costSpecialPieces;
+    const equippedIds = new Set(Object.values(char.equipment || {}).filter(Boolean));
+    specialInv.sort((a, b) => (equippedIds.has(a.itemId) ? 1 : 0) - (equippedIds.has(b.itemId) ? 1 : 0));
+    for (const i of specialInv) {
+      if (need <= 0) break;
+      const take = Math.min(i.qty, need);
+      i.qty -= take; need -= take;
+      if (equippedIds.has(i.itemId) && i.qty === 0) {
+        Object.entries(char.equipment).forEach(([slot, id]) => { if (id === i.itemId) char.equipment[slot] = null; });
+      }
+    }
+    stoneInv.qty -= GD.AURA.costUpgradeStones;
+    char.inventory = char.inventory.filter((i) => i.qty > 0);
+    char.hasAura = true;
+    await char.save();
+    res.json({ success: true, character: publicChar(char) });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
 // point 5/11: di chuyển lục địa / map (NPC dẫn đường hoặc đi bộ giữa các map trong lục địa)
 router.post('/character/move', protect, async (req, res) => {
   try {
-    const { mapId, x, y } = req.body;
+    const { mapId, x, y, freeTeleport } = req.body;
     const map = GD.MAPS.find((m) => m.id === mapId);
     if (!map) return res.status(400).json({ success: false, message: 'Map không hợp lệ' });
     const char = await Character.findOne({ user: req.user._id });
     if (!char) return res.status(404).json({ success: false, message: 'Chưa có nhân vật' });
+
+    // Đổi LỤC ĐỊA (khác continentId hiện tại) bắt buộc có Truyền Tống Phù, trừ khi là
+    // freeTeleport (ví dụ: dịch chuyển tới Boss Thế Giới từ Thông Báo — vẫn miễn phí để
+    // khuyến khích tham gia world event). Di chuyển giữa các map TRONG CÙNG 1 lục địa
+    // (đi bộ qua hành lang) luôn miễn phí, không cần vật phẩm gì.
+    const fromContinentId = char.position?.continentId;
+    if (!freeTeleport && fromContinentId && fromContinentId !== map.continentId) {
+      const scroll = char.inventory.find((i) => i.itemId === 'teleport_scroll' && i.kind === 'consumable');
+      if (!scroll || scroll.qty < 1) {
+        return res.status(400).json({ success: false, message: 'Cần có Truyền Tống Phù để di chuyển sang lục địa khác. Mua tại cửa hàng vật phẩm.', needsScroll: true });
+      }
+      scroll.qty -= 1;
+      if (scroll.qty <= 0) char.inventory = char.inventory.filter((i) => i !== scroll);
+    }
+
     char.position = { continentId: map.continentId, mapId: map.id, x: x ?? 400, y: y ?? 300 };
     const visited = new Set(char.questProgress?.continentsVisited || []);
     if (!visited.has(map.continentId)) {
@@ -379,6 +663,32 @@ router.post('/character/move', protect, async (req, res) => {
     }
     await char.save();
     res.json({ success: true, character: publicChar(char) });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// Hồi sinh sau khi gục: 'home' (miễn phí, dịch chuyển về map khởi đầu — không cần Truyền Tống
+// Phù dù đang ở lục địa khác, vì đây là hình phạt chết chứ không phải di chuyển thường) hoặc
+// 'gem' (hồi sinh tại chỗ, tốn 30 ngọc, giữ nguyên vị trí/map hiện tại).
+router.post('/character/revive', protect, async (req, res) => {
+  try {
+    const { mode } = req.body; // 'home' | 'gem'
+    const char = await Character.findOne({ user: req.user._id });
+    if (!char) return res.status(404).json({ success: false, message: 'Chưa có nhân vật' });
+
+    if (mode === 'gem') {
+      const REVIVE_GEM_COST = 30;
+      if (char.gem < REVIVE_GEM_COST) {
+        return res.status(400).json({ success: false, message: `Cần ${REVIVE_GEM_COST} ngọc để hồi sinh tại chỗ, bạn không đủ.` });
+      }
+      char.gem -= REVIVE_GEM_COST;
+      await char.save();
+      return res.json({ success: true, character: publicChar(char), mode: 'gem' });
+    }
+
+    const homeMap = GD.MAPS.find((m) => m.id === 'aurelion_1');
+    char.position = { continentId: homeMap.continentId, mapId: homeMap.id, x: 400, y: 300 };
+    await char.save();
+    res.json({ success: true, character: publicChar(char), mode: 'home', map: { id: homeMap.id, continentId: homeMap.continentId } });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 

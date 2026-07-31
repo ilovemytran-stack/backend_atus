@@ -219,7 +219,7 @@ router.put('/game/characters/:id/currency', async (req, res) => {
     char.gold = Math.max(0, char.gold + Number(gold || 0));
     char.gem = Math.max(0, char.gem + Number(gem || 0));
     await char.save();
-    res.json({ success: true, message: `Đã cộng ${gold}🪙 ${gem}💎 cho ${char.name}` });
+    res.json({ success: true, message: `Đã cộng ${gold} Vàng ${gem} Ngọc cho ${char.name}` });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 

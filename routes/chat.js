@@ -62,7 +62,7 @@ router.post('/:conversationId/messages', protect, uploadImage.single('image'), a
 
     await Conversation.findByIdAndUpdate(req.params.conversationId, {
       lastMessage: message._id,
-      lastMessageText: content || '📷 Ảnh',
+      lastMessageText: content || 'Ảnh',
       lastMessageAt: new Date()
     });
 

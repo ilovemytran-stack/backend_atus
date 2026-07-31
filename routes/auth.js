@@ -77,7 +77,7 @@ router.post('/forgot-password', async (req, res) => {
     const transporter = nodemailer.createTransport({ host: process.env.EMAIL_HOST, port: process.env.EMAIL_PORT, auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } });
     await transporter.sendMail({
       from: `Public <${process.env.EMAIL_USER}>`, to: user.email,
-      subject: '🔐 Đặt lại mật khẩu Public',
+      subject: 'Đặt lại mật khẩu Public',
       html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:30px;background:#0a0a0a;color:#fff;border-radius:16px">
         <h2 style="color:#6C63FF">Public</h2>
         <p>Bạn yêu cầu đặt lại mật khẩu. Click nút bên dưới:</p>

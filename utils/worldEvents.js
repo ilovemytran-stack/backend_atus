@@ -89,9 +89,25 @@ module.exports = (io) => {
     bossNextSpawn = Date.now() + GD.MEGA_BOSS_SPAWN_INTERVAL_MS;
   }
 
-  async function killBossReward() {
+  // Pet vừa được cấp mà char đã ở level >= mốc mở khoá (VD: rơi khi đã 45 level) thì roll ngay
+  // skill tương ứng thay vì để trống tới lần lên cấp tiếp theo mới có (đồng bộ với syncPetProgression
+  // trong routes/game.js — 2 nơi cùng logic vì worldEvents.js không import trực tiếp file route).
+  function rollNewPetSkills(char, pet) {
+    if (char.level >= 20 && pet.skill2Version == null) pet.skill2Version = 1 + Math.floor(Math.random() * 4);
+    if (char.level >= 40 && pet.skill3Version == null) pet.skill3Version = 1 + Math.floor(Math.random() * 2);
+    if (char.level >= 60) pet.hasSkill4 = true;
+  }
+
+  // mục 7: Boss ChaosLord (= b_chaoseraph, boss thế giới 5 dạng) rơi Pet — CHỈ cho 3 người gây dame
+  // cao nhất + người kết liễu (dedup nếu trùng). Bộ Trang Bị Siêu Cấp thì rơi cho MỌI người tham gia,
+  // cùng cơ chế như đá nâng cấp/bộ Đặc Biệt hiện có, chỉ khác tỉ lệ thấp hơn.
+  async function killBossReward(killerUserId) {
     const contributors = Array.from(boss.damageBy.entries());
     const mapId = boss.mapId, zone = boss.zone;
+    const top3 = contributors.slice().sort((a, b) => b[1] - a[1]).slice(0, 3).map(([uid]) => uid);
+    const petEligible = new Set(top3);
+    if (killerUserId) petEligible.add(killerUserId);
+
     for (const [uid] of contributors) {
       try {
         const user = await User.findById(uid);
@@ -107,8 +123,39 @@ module.exports = (io) => {
             drops.push(itemId);
           }
         });
+        GD.SUPER_SET.pieces.forEach((itemId) => {
+          if (Math.random() < GD.MEGA_BOSS_SUPER_DROP_CHANCE_EACH) {
+            const def = GD.SUPER_ITEMS[itemId];
+            char.inventory.push({ itemId, kind: def.kind, qty: 1 });
+            drops.push(itemId);
+          }
+        });
+
+        let petGained = null;
+        if (petEligible.has(uid)) {
+          char.pets = char.pets || { slots: [], slot2Unlocked: false };
+          const rolls = [];
+          if (Math.random() < GD.PET_DROP_CHANCE.normal) rolls.push(Math.random() < 0.5 ? 'pet_ghost' : 'pet_wolf');
+          if (Math.random() < GD.PET_DROP_CHANCE.vip) rolls.push(Math.random() < 0.5 ? 'pet_ninja_vip' : 'pet_boy_vip');
+          for (const defId of rolls) {
+            const hasSlot1 = char.pets.slots.length > 0;
+            const hasSlot2 = char.pets.slots.length > 1;
+            if (!hasSlot1) {
+              const pet = { defId, mode: 'def', skill2Version: null, skill3Version: null, hasSkill4: false, deadUntil: null, obtainedAt: new Date() };
+              rollNewPetSkills(char, pet);
+              char.pets.slots.push(pet);
+              petGained = defId; drops.push(`pet:${defId}`);
+            } else if (char.pets.slot2Unlocked && !hasSlot2) {
+              const pet = { defId, mode: 'def', skill2Version: null, skill3Version: null, hasSkill4: false, deadUntil: null, obtainedAt: new Date() };
+              rollNewPetSkills(char, pet);
+              char.pets.slots.push(pet);
+              petGained = defId; drops.push(`pet:${defId}`);
+            } // đã đủ pet / chưa mở ô 2 -> roll trúng cũng không nhận thêm được (không có ô chứa)
+          }
+        }
+
         await user.save(); await char.save();
-        io.to(`user_${uid}`).emit('boss_kill_reward', { vipCoin: GD.MEGA_BOSS_KILL_REWARD_VIPCOIN, drops });
+        io.to(`user_${uid}`).emit('boss_kill_reward', { vipCoin: GD.MEGA_BOSS_KILL_REWARD_VIPCOIN, drops, petGained });
       } catch (e) { /* bỏ qua lỗi 1 user */ }
     }
     io.to(roomOf(mapId, zone)).emit('boss_killed', { mapId });
@@ -168,7 +215,7 @@ module.exports = (io) => {
       boss.lastActionAt = Date.now();
       boss.damageBy.set(userId, (boss.damageBy.get(userId) || 0) + clean);
       io.to(roomOf(mapId, zone)).emit('boss_hp_update', { hp: boss.hp, maxHp: boss.maxHp });
-      if (boss.hp <= 0) { killBossReward(); return; }
+      if (boss.hp <= 0) { killBossReward(userId); return; }
       if (!boss.singleFormMode) {
         const newForm = formForHpRatio(boss.hp / boss.maxHp);
         if (newForm !== boss.form) {

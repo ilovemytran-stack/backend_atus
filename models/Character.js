@@ -79,6 +79,32 @@ const characterSchema = new mongoose.Schema({
   }],
 
   questProgress: { type: mongoose.Schema.Types.Mixed, default: {} },
+
+  // ---- Pet & Hào Quang (Pet-Aura update) ----
+  // slots[0] = "Đại ca" (pet đầu tiên), slots[1] = "Tiểu đệ" (pet thứ 2, cần slot2Unlocked).
+  // HP/Ki/ATK/DEF của pet KHÔNG lưu ở đây — luôn tính lại từ chỉ số người chơi hiện tại (đồng bộ
+  // trực tiếp theo mục 5 của bản spec), chỉ lưu tiến trình/roll ngẫu nhiên + trạng thái chết.
+  pets: {
+    slots: [{
+      defId: { type: String, required: true },        // key trong GD.PETS (pet_ghost/pet_wolf/pet_ninja_vip/pet_boy_vip)
+      mode: { type: String, enum: ['def', 'atk', 'fl'], default: 'def' }, // lệnh chat: def/atk/fl
+      skill2Version: { type: Number, default: null },  // 1-4, roll ngẫu nhiên khi (level đồng bộ) >= 20
+      skill3Version: { type: Number, default: null },  // 1-2, roll ngẫu nhiên khi level >= 40
+      hasSkill4: { type: Boolean, default: false },    // mở khoá cố định khi level >= 60
+      deadUntil: { type: Date, default: null },        // null = đang sống; nếu có giá trị = đang chờ hồi sinh (3 phút)
+      obtainedAt: { type: Date, default: Date.now },
+    }],
+    slot2Unlocked: { type: Boolean, default: false },  // mở bằng vật phẩm "Lệnh Bái Sư"
+  },
+
+  hasAura: { type: Boolean, default: false }, // đã đổi Hào Quang tại Trưởng Lão Nhiệm Vụ (Lục Địa Ánh Sáng) hay chưa
+
+  // Cộng dồn VĨNH VIỄN từ đá cường hoá / huy hiệu (vật phẩm dùng 1 lần, khác buff có thời hạn —
+  // buff có thời hạn (x2 exp, tăng sát thương...) xử lý phía client giống các potion cũ, không lưu DB).
+  permBonus: {
+    atk: { type: Number, default: 0 }, def: { type: Number, default: 0 }, hp: { type: Number, default: 0 },
+    spd: { type: Number, default: 0 }, crit: { type: Number, default: 0 },
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Character', characterSchema);

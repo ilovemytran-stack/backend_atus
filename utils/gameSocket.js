@@ -116,6 +116,16 @@ module.exports = (io) => {
       io.to(guildRoom).emit('game_guild_chat_message', { userId, name: p?.name || '???', text: text.trim().slice(0, 140), at: Date.now() });
     });
 
+    // Hào Quang (Aura) — mỗi 6s người sở hữu Aura phát 1 "tiếng vang" (mục pulse trong AURA/gameData.js):
+    // chỉ relay lại cho người khác trong cùng khu vực biết VỊ TRÍ người phát (userId), rồi MỖI CLIENT tự
+    // tính khoảng cách tới người đó để quyết định có nằm trong bán kính buff hay không (đỡ phải đồng bộ
+    // toạ độ tất cả người chơi qua server — server vốn không giữ toạ độ chi tiết ngoài game_move relay).
+    socket.on('game_aura_pulse', ({ mapId }) => {
+      const cur = socketMap.get(socket.id);
+      if (!cur || cur.mapId !== mapId) return;
+      socket.to(roomOf(mapId, cur.zone)).emit('game_aura_pulse_received', { userId });
+    });
+
     socket.on('game_leave_map', () => leaveCurrentZone(socket));
     socket.on('disconnect', () => leaveCurrentZone(socket));
   };

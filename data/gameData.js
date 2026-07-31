@@ -239,9 +239,11 @@ function scaleMonster(monsterDef, mapLevel, isBoss = false, isMixTier = false) {
     atk: Math.round(monsterDef.baseAtk * lvGrow * (isBoss ? 2.2 : (isMixTier ? 1.4 : 1))),
     def: Math.round(monsterDef.baseDef * lvGrow * (isBoss ? 1.8 : (isMixTier ? 1.3 : 1))),
     xp: Math.round((8 + mapLevel * 2) * mult),
-    goldMin: Math.round((2 + mapLevel * 0.6) * (isBoss ? 8 : 1)),
-    goldMax: Math.round((6 + mapLevel * 1.2) * (isBoss ? 10 : 1)),
-    gemChance: isBoss ? 0.9 : 0.04,
+    // Kinh tế thắt chặt hơn bản trước (theo yêu cầu "kiếm vàng ngọc khó hơn"): giảm ~35% vàng rơi
+    // mỗi lượt và giảm ~45% cơ hội rơi ngọc (quái thường 0.04 -> 0.022, quái map boss 0.9 -> 0.5).
+    goldMin: Math.round((1.3 + mapLevel * 0.4) * (isBoss ? 8 : 1)),
+    goldMax: Math.round((4 + mapLevel * 0.8) * (isBoss ? 10 : 1)),
+    gemChance: isBoss ? 0.5 : 0.022,
   };
 }
 
@@ -258,9 +260,9 @@ function guardianBossStatsFor(continent, mapLevel) {
     atk: Math.round(avgAtk * lvGrow * 2.6),
     def: Math.round(avgDef * lvGrow * 2.2),
     xp: Math.round((8 + mapLevel * 2) * 14),
-    goldMin: Math.round((2 + mapLevel * 0.6) * 16),
-    goldMax: Math.round((6 + mapLevel * 1.2) * 18),
-    gemChance: 0.4,
+    goldMin: Math.round((1.3 + mapLevel * 0.4) * 16),
+    goldMax: Math.round((4 + mapLevel * 0.8) * 18),
+    gemChance: 0.22,
   };
 }
 
@@ -370,6 +372,7 @@ const CONSUMABLES = {
   elixir_of_life: { id: 'elixir_of_life', name: 'Elixir of Life', desc: 'Hồi 100% HP + tăng 20% HP tối đa 600s', effect: { hp: 1.0, buffMaxHp: 0.2, buffSec: 600 }, price: 12, currency: 'gem' },
   might_potion: { id: 'might_potion', name: 'Might Potion', desc: 'Tăng 20% sát thương vật lý 300s', effect: { buffAtk: 0.2, buffSec: 300 }, price: 25, currency: 'gold' },
   swiftness_potion: { id: 'swiftness_potion', name: 'Swiftness Potion', desc: 'Tăng 15% tốc độ di chuyển 300s', effect: { buffSpd: 0.15, buffSec: 300 }, price: 20, currency: 'gold' },
+  teleport_scroll: { id: 'teleport_scroll', name: 'Truyền Tống Phù', desc: 'Di chuyển ngay sang một lục địa khác mà không cần đi bộ qua các map trung gian. Tiêu hao 1 lá khi dùng để đổi lục địa. Di chuyển giữa các map TRONG CÙNG 1 lục địa vẫn đi bộ tự do, không cần lá này.', effect: {}, price: 15, currency: 'gem' },
   upgrade_stone_special: { id: 'upgrade_stone_special', name: 'Đá Nâng Trang Bị Đặc Biệt', desc: 'Nguyên liệu nâng cấp bộ trang bị đặc biệt (chỉ rơi từ Boss Thế Giới).', effect: {}, price: 0, currency: 'gem', dropOnly: true },
 };
 
@@ -461,6 +464,209 @@ const BOSSES = [
     ], ult: 'Phán Quyết Ảo Ảnh' },
 ];
 
+// ============================================================================
+// PET & HÀO QUANG (AURA) — bản cập nhật dựa trên GLG/Pet-Aura/pet-aura-system-spec.md
+// Toàn bộ số liệu ở mục "chưa tự điền số" trong bản spec (Aura buff %, chênh lệch VIP/Thường,
+// mult/cd từng version chiêu...) do Claude tự quyết định ở đây — dễ tìm, dễ chỉnh tay sau này.
+// ============================================================================
+
+// ---- 4 loại pet: Thường (Ghost/Wolf) và VIP (Ninja/Boy) ----
+const PETS = {
+  pet_ghost: { id: 'pet_ghost', name: 'Bóng Ma Nhỏ', tier: 'normal', portrait: '/assets/game/pets/pet_ghost/1.png', diePortrait: '/assets/game/pets/pet_ghost/Die.png', frameCount: 26 },
+  pet_wolf: { id: 'pet_wolf', name: 'Sói Con', tier: 'normal', portrait: '/assets/game/pets/pet_wolf/1.png', diePortrait: '/assets/game/pets/pet_wolf/Die.png', frameCount: 26 },
+  pet_ninja_vip: { id: 'pet_ninja_vip', name: 'Ninja Nhí', tier: 'vip', portrait: '/assets/game/pets/pet_ninja_vip/1.png', diePortrait: '/assets/game/pets/pet_ninja_vip/Die.png', frameCount: 26 },
+  pet_boy_vip: { id: 'pet_boy_vip', name: 'Thiếu Niên Bí Ẩn', tier: 'vip', portrait: '/assets/game/pets/pet_boy_vip/1.png', diePortrait: '/assets/game/pets/pet_boy_vip/Die.png', frameCount: 26 },
+};
+// Mục 2: "VIP cao hơn Thường ~20-30%" — chọn mức giữa 25%, nhân lên TRÊN chỉ số đã đồng bộ (mục 5).
+const PET_TIER_MULT = { normal: 1.0, vip: 1.25 };
+const PET_DEATH_MS = 3 * 60 * 1000; // mục 4: chết 3 phút rồi tự hồi sinh
+const PET_DROP_CHANCE = { normal: 0.23, vip: 0.18 }; // mục 7, rơi từ Boss ChaosLord (= b_chaoseraph)
+const PET_MAX_CONTRIBUTORS = 4; // 3 dame cao nhất + 1 người kết liễu (có thể trùng)
+const PET_BASIC_ATK_MULT = 1.0; // "chiêu 1" mặc định = đấm thường, dùng đúng ATK đã đồng bộ
+
+// Skill 2 (mở khoá level 20) — 4 version ngẫu nhiên, cd lấy đúng theo Skill 2.md, mult tự quyết định
+// (version càng mạnh hồi chiêu càng lâu, cùng tinh thần "v4 mạnh nhất, hồi chiêu lâu nhất").
+const PET_SKILL2_VERSIONS = {
+  1: { mult: 1.0, cd: 0.5 },
+  2: { mult: 1.2, cd: 0.7 },
+  3: { mult: 1.45, cd: 0.8 },
+  4: { mult: 1.75, cd: 1.0 },
+};
+// Skill 3 (mở khoá level 40) — 2 version ngẫu nhiên, đúng theo Skill3.md.
+// "mỗi lần cộng điểm +0.3s": pet không có điểm chiêu riêng để cộng (mục 5 nói rõ pet đồng bộ hoàn
+// toàn theo người chơi, không tự cày như NRO) nên Claude quy đổi thành tự scale theo LEVEL hiện tại
+// (level đã đồng bộ với người chơi) thay vì điểm cộng tay — cứ mỗi 6 level thì +0.3s, tối đa +3s.
+const PET_SKILL3_VERSIONS = {
+  1: { effect: 'stun', durationBase: 3, durationPerLevelStep: 0.3, levelStep: 6, maxBonus: 3, cd: 66 },
+  2: { effect: 'dot', pctPerSec: 0.03, duration: 3, cd: 66 },
+};
+// Skill 4 (mở khoá level 60, chỉ 1 version) — đúng theo skill4.md.
+const PET_SKILL4 = { duration: 40, dmgPctOfPet: 0.30, cd: 120 }; // cd 120s (2 phút) là mức Claude tự đặt cho 1 skill "cấp tối thượng"
+
+// ---- Hào Quang (Aura) — mục 1 ----
+const AURA = {
+  id: 'aura_ascendant', name: 'Hào Quang Thăng Hoa',
+  npcId: 'npc_quest', continentId: 'aurelion', reqLevel: 15,
+  costSpecialPieces: 3, costUpgradeStones: 3,
+  dialogue: 'Ta ở đây có 1 nguồn sức mạnh vô tận, hãy trao đổi với ta bằng 3 trang bị đặc biệt bất kỳ và 3 viên đá nâng cấp trang bị đặc biệt - yêu cầu level 15 trở lên.',
+  // % passive khi đang sở hữu (mục "chưa tự điền số" — Claude tự quyết định mức vừa mạnh vừa không phá vỡ cân bằng hiện có)
+  buff: { atkPct: 0.18, defPct: 0.18, hpPct: 0.20, critAdd: 6, lifestealPct: 0.20, energyStealPct: 0.20 },
+  // Hiệu ứng đặc biệt: mỗi 6s chat "Tôn Sùng" + bản thân/người chơi & pet gần đó (không tính quái/boss) +8% sát thương
+  pulse: { intervalSec: 6, buffDurationSec: 8, dmgPct: 0.08, radius: 150, chatText: 'Tôn Sùng' },
+};
+
+// ---- Bộ Trang Bị Siêu Cấp (Super Set) — GLG/Super_Set, không có spec riêng nên Claude tự thiết kế
+// cơ chế: cùng khuôn với SPECIAL_SET (crimson reaper) nhưng mạnh hơn 1 bậc + có animation biến hình
+// riêng khi mặc đủ bộ (equip_motion, xem client). Rơi từ CÙNG Boss ChaosLord, tỉ lệ thấp hơn special.
+const SUPER_SET = {
+  id: 'super_ascendant', name: 'Bộ Trang Bị Siêu Cấp Thăng Hoa', hiddenClass: 'ascendant',
+  desc: 'Bộ 4 món (vũ khí/áo/quần/giày) hiếm hơn cả bộ Đặc Biệt, rơi ngẫu nhiên từ Boss ChaosLord. Đủ 4 món: +55% cơ hội đòn xử tử (PvE) + 12% toàn bộ sát thương gây ra + hiệu ứng biến hình khi trang bị đủ bộ.',
+  pieces: ['super_weapon', 'super_body', 'super_legs', 'super_boots'],
+  setBonus: { executeChance: 0.55, atk: 60, def: 35, hp: 160, allDmgPct: 0.12 },
+  reqLevel: 40,
+  equipMotionFrames: 31, equipMotionPath: '/assets/game/super-set/equip_motion',
+};
+const SUPER_ITEMS = {
+  super_weapon: { id: 'super_weapon', kind: 'weapon', weaponType: 'special', name: 'Vũ Khí Thăng Hoa', rarity: 'super', atk: 85, def: 0, price: 0, currency: 'gem', reqLevel: 40, dropOnly: true, icon: '/assets/game/super-set/equipment_set/weapon.png' },
+  super_body: { id: 'super_body', kind: 'armor', slot: 'body', name: 'Giáp Thăng Hoa', rarity: 'super', def: 45, hp: 90, price: 0, currency: 'gem', reqLevel: 40, dropOnly: true, icon: '/assets/game/super-set/equipment_set/body.png' },
+  super_legs: { id: 'super_legs', kind: 'armor', slot: 'legs', name: 'Quần Giáp Thăng Hoa', rarity: 'super', def: 38, hp: 60, price: 0, currency: 'gem', reqLevel: 40, dropOnly: true, icon: '/assets/game/super-set/equipment_set/legs.png' },
+  super_boots: { id: 'super_boots', kind: 'armor', slot: 'boots', name: 'Giày Thăng Hoa', rarity: 'super', def: 22, hp: 30, spd: 4, price: 0, currency: 'gem', reqLevel: 40, dropOnly: true, icon: '/assets/game/super-set/equipment_set/boots.png' },
+};
+RARITY_LABEL.super = 'Siêu Cấp';
+RARITY_COLOR.super = '#5CE8D8';
+const MEGA_BOSS_SUPER_DROP_CHANCE_EACH = 0.06; // hiếm hơn special (0.15) — đúng tinh thần "cao cấp hơn"
+
+// ---- Giới hạn chỉ số (mục 10) — TRẦN CỨNG, không phải mục tiêu phải đạt tới ngay. Số liệu hiện tại
+// (level 60, đồ Thần Thoại) còn thấp hơn trần rất nhiều, nên trần này chủ yếu để phòng khi tự tăng
+// chỉ số item/boss về sau không bị vượt mất kiểm soát. Boss/Thần thường (không phải ChaosLord) dùng
+// mức trần thấp hơn theo đúng khoảng "yếu hơn 25-45%/10-60% tuỳ map" — Claude lấy mốc giữa (35%) làm
+// hằng số dùng chung, có thể chỉnh riêng từng map sau này nếu cần.
+const STAT_CAPS = {
+  HP_CHAOSLORD: 1_000_000, ATK_CHAOSLORD: 40_000, ENERGY_BOSS_GOD: 1_000_000, DEF_BOSS_GOD: 6_000,
+  HP_GUARDIAN_GOD: Math.round(1_000_000 * 0.65), ATK_GUARDIAN_GOD: Math.round(40_000 * 0.65),
+  HP_PLAYER: 80_000, HP_PET_VIP: 80_000, HP_PET_NORMAL: 55_000,
+  KI_ALL: 70_000,
+  DMG_PLAYER: 8_000, DMG_PET_VIP: 8_000, DMG_PET_NORMAL: 6_500,
+  ARMOR_ALL: 2_800,
+};
+
+// ---- 48 vật phẩm mới từ GLG/Weapon-Armor-Items (17 đã đặt tên + 31 icon rời Claude tự nghĩ cơ chế) ----
+// 17 món đã đặt tên (Items.md) — effect đọc theo route use-item (backend/routes/game.js) xử lý riêng
+// cho nhóm liên quan tới pet (đổi pet/thay chiêu/lệnh bái sư), còn lại theo object "effect" như cũ.
+const NEW_CONSUMABLES_NAMED = {
+  heal_potion: { id: 'heal_potion', name: 'Hồi Máu', desc: 'Hồi 50% HP.', effect: { hp: 0.5 }, price: 30, currency: 'gold', icon: '/assets/game/items/heal_potion.png' },
+  heal_potion_vip: { id: 'heal_potion_vip', name: 'Hồi Máu VIP', desc: 'Hồi ngay 100% HP + hồi thêm 5%/giây trong 5 giây.', effect: { hp: 1.0, hotPct: 0.05, hotSec: 5 }, price: 8, currency: 'gem', icon: '/assets/game/items/heal_potion_vip.png' },
+  energy_potion: { id: 'energy_potion', name: 'Hồi Năng Lượng', desc: 'Hồi 50% Ki.', effect: { ki: 0.5 }, price: 30, currency: 'gold', icon: '/assets/game/items/energy_potion.png' },
+  energy_potion_vip: { id: 'energy_potion_vip', name: 'Hồi Năng Lượng VIP', desc: 'Hồi ngay 100% Ki + tăng 50% tốc độ hồi Ki trong 120 giây.', effect: { ki: 1.0, buffKiRegenPct: 0.5, buffSec: 120 }, price: 8, currency: 'gem', icon: '/assets/game/items/energy_potion_vip.png' },
+  exp_x2: { id: 'exp_x2', name: 'x2 EXP', desc: 'Nhân đôi EXP nhận được trong 30 phút (chỉ tác dụng với người dùng).', effect: { buffExpMult: 2, buffSec: 1800 }, price: 15, currency: 'gem', icon: '/assets/game/items/exp_x2.png' },
+  exp_x3: { id: 'exp_x3', name: 'x3 EXP', desc: 'Nhân ba EXP nhận được trong 20 phút (chỉ tác dụng với người dùng).', effect: { buffExpMult: 3, buffSec: 1200 }, price: 28, currency: 'gem', icon: '/assets/game/items/exp_x3.png' },
+  skill_dmg_boost: { id: 'skill_dmg_boost', name: 'Tăng Sát Thương Chiêu', desc: 'Tăng 25% sát thương gây ra bởi CHIÊU THỨC trong 300 giây.', effect: { buffSkillDmgPct: 0.25, buffSec: 300 }, price: 45, currency: 'gold', icon: '/assets/game/items/skill_dmg_boost.png' },
+  all_dmg_boost: { id: 'all_dmg_boost', name: 'Tăng Toàn Bộ Sát Thương Gây Ra', desc: 'Tăng 15% TOÀN BỘ sát thương gây ra (đánh thường + chiêu) trong 300 giây.', effect: { buffAllDmgPct: 0.15, buffSec: 300 }, price: 18, currency: 'gem', icon: '/assets/game/items/all_dmg_boost.png' },
+  exp_x2_pet: { id: 'exp_x2_pet', name: 'x2 EXP Cho Pet', desc: 'Cả 2 pet (nếu có) tạm thời +15% HP/ATK/DEF trong 300 giây, như đang tiến bộ nhanh hơn (pet vốn đồng bộ cấp theo bạn nên không "cày" EXP riêng — vật phẩm quy đổi thành buff chỉ số tạm thời).', effect: { buffPetStatPct: 0.15, buffSec: 300 }, price: 20, currency: 'gem', icon: '/assets/game/items/exp_x2_pet.png' },
+  bai_su_token: { id: 'bai_su_token', name: 'Lệnh Bái Sư', desc: 'Mở thêm 1 ô pet (tối đa 2 pet/người chơi). Dùng 1 lần duy nhất.', effect: {}, price: 60, currency: 'gem', icon: '/assets/game/items/bai_su_token.png' },
+  change_pet_1: { id: 'change_pet_1', name: 'Đổi Pet 1 (Đại Ca)', desc: 'Đổi ngẫu nhiên sang 1 trong 4 loại pet khác cho pet ở ô Đại Ca (giữ nguyên chiêu đã học).', effect: {}, price: 35, currency: 'gem', icon: '/assets/game/items/change_pet_1.png' },
+  change_pet_2: { id: 'change_pet_2', name: 'Đổi Pet 2 (Tiểu Đệ)', desc: 'Đổi ngẫu nhiên sang 1 trong 4 loại pet khác cho pet ở ô Tiểu Đệ (giữ nguyên chiêu đã học).', effect: {}, price: 35, currency: 'gem', icon: '/assets/game/items/change_pet_2.png' },
+  reroll_skill2_pet1: { id: 'reroll_skill2_pet1', name: 'Thay Chiêu 2 - Pet 1 (Đại Ca)', desc: 'Random lại version Chiêu 2 (V1-V4) của pet Đại Ca.', effect: {}, price: 25, currency: 'gem', icon: '/assets/game/items/reroll_skill2_pet1.png' },
+  reroll_skill3_pet1: { id: 'reroll_skill3_pet1', name: 'Thay Chiêu 3 - Pet 1 (Đại Ca)', desc: 'Random lại version Chiêu 3 (V1-V2) của pet Đại Ca.', effect: {}, price: 25, currency: 'gem', icon: '/assets/game/items/reroll_skill3_generic.png' },
+  reroll_skill2_pet2: { id: 'reroll_skill2_pet2', name: 'Thay Chiêu 2 - Pet 2 (Tiểu Đệ)', desc: 'Random lại version Chiêu 2 (V1-V4) của pet Tiểu Đệ.', effect: {}, price: 25, currency: 'gem', icon: '/assets/game/items/reroll_skill2_generic.png' },
+  reroll_skill3_pet2: { id: 'reroll_skill3_pet2', name: 'Thay Chiêu 3 - Pet 2 (Tiểu Đệ)', desc: 'Random lại version Chiêu 3 (V1-V2) của pet Tiểu Đệ.', effect: {}, price: 25, currency: 'gem', icon: '/assets/game/items/reroll_skill3_pet2.png' },
+};
+// 31 icon KHÔNG có tên gốc — Claude tự nghĩ cơ chế (yêu cầu của Le Tu). Chia 4 nhóm theo hình dáng icon:
+// 7 viên đá màu theo phẩm chất (r3) = đá cường hoá cộng vĩnh viễn 1 ít chỉ số; 8 icon khoáng vật/nguyên
+// liệu (r4) = vật phẩm rơi ra chỉ để BÁN lấy vàng; 4 chìa khoá + rương (r5c1-4 & r6c8) = mở rương nhận
+// thưởng theo tầng chìa khoá; 4 huy hiệu (r5c5-8) = trang sức cộng vĩnh viễn 1 chỉ số; còn lại (r6) là
+// vật phẩm tiện ích rời.
+const RARITY_GEM_TIER_BONUS = { common: 1, uncommon: 1.4, rare: 1.9, epic: 2.6, legendary: 3.4, special: 4.2, super: 5.2 };
+function buildEnhancementGems() {
+  const out = {};
+  const tiers = [
+    ['gem_common', 'common', 'Đá Cường Hoá Thường'], ['gem_uncommon', 'uncommon', 'Đá Cường Hoá Hiếm'],
+    ['gem_rare', 'rare', 'Đá Cường Hoá Sử Thi'], ['gem_epic', 'epic', 'Đá Cường Hoá Huyền Thoại'],
+    ['gem_legendary', 'legendary', 'Đá Cường Hoá Thần Thoại'], ['gem_special', 'special', 'Đá Cường Hoá Đặc Biệt'],
+    ['gem_super', 'super', 'Đá Cường Hoá Siêu Cấp'],
+  ];
+  tiers.forEach(([id, tier, name]) => {
+    const b = RARITY_GEM_TIER_BONUS[tier];
+    out[id] = {
+      id, name, desc: `Dùng 1 lần: cộng vĩnh viễn +${Math.round(2 * b)} ATK, +${Math.round(1.2 * b)} DEF, +${Math.round(8 * b)} HP cho nhân vật.`,
+      effect: { permAtk: Math.round(2 * b), permDef: Math.round(1.2 * b), permHp: Math.round(8 * b) },
+      price: Math.round(20 * b), currency: 'gem', icon: `/assets/game/items/${id}.png`,
+    };
+  });
+  return out;
+}
+function buildMaterials() {
+  const mats = [
+    ['mat_herb_bundle', 'Bó Thảo Dược', 25], ['mat_gold_nugget', 'Cục Vàng Thô', 60],
+    ['mat_coal', 'Đá Than', 40], ['mat_silver_ingot', 'Thỏi Bạc', 90],
+    ['mat_gold_ingot', 'Thỏi Vàng', 150], ['mat_crystal_cluster', 'Cụm Pha Lê Tím', 320],
+    ['mat_dragon_scale', 'Vảy Rồng', 400], ['mat_pearl', 'Ngọc Trai Vực Sâu', 380],
+  ];
+  const out = {};
+  mats.forEach(([id, name, sellPrice]) => {
+    out[id] = { id, name, desc: `Nguyên liệu quý hiếm, không dùng được — chỉ có thể bán cho NPC lấy vàng (${sellPrice} vàng).`, effect: {}, price: 0, sellPrice, currency: 'gold', dropOnly: true, icon: `/assets/game/items/${id}.png` };
+  });
+  return out;
+}
+const KEY_TIERS = {
+  key_silver: { label: 'Bạc', gold: [80, 150], gem: [0, 2], matChance: 0.15 },
+  key_green: { label: 'Lục', gold: [150, 280], gem: [1, 4], matChance: 0.3 },
+  key_purple: { label: 'Tím', gold: [280, 500], gem: [3, 8], matChance: 0.5 },
+  key_red: { label: 'Đỏ', gold: [500, 900], gem: [6, 15], matChance: 0.75, superShardChance: 0.05 },
+};
+function buildKeysAndChest() {
+  const out = {};
+  Object.entries(KEY_TIERS).forEach(([id, t]) => {
+    out[id] = { id, name: `Chìa Khoá ${t.label}`, desc: `Dùng cùng 1 Rương Kho Báu để mở, phần thưởng theo tầng ${t.label}.`, effect: {}, price: 0, currency: 'gem', dropOnly: true, icon: `/assets/game/items/${id}.png` };
+  });
+  out.treasure_chest = { id: 'treasure_chest', name: 'Rương Kho Báu', desc: 'Cần 1 chìa khoá bất kỳ để mở — phần thưởng (vàng/ngọc/nguyên liệu) phụ thuộc tầng chìa khoá dùng.', effect: {}, price: 0, currency: 'gold', dropOnly: true, icon: '/assets/game/items/treasure_chest.png' };
+  return out;
+}
+const TRINKET_DEFS = {
+  emblem_compass: { id: 'emblem_compass', name: 'Huy Hiệu La Bàn', stat: 'permSpd', amount: 3, label: '+3 Tốc Độ' },
+  emblem_shield: { id: 'emblem_shield', name: 'Huy Hiệu Khiên', stat: 'permDef', amount: 12, label: '+12 Giáp' },
+  emblem_lion: { id: 'emblem_lion', name: 'Huy Hiệu Sư Tử', stat: 'permAtk', amount: 10, label: '+10 ATK' },
+  emblem_eye: { id: 'emblem_eye', name: 'Huy Hiệu Con Mắt', stat: 'permCrit', amount: 2, label: '+2% Chí Mạng' },
+};
+function buildTrinkets() {
+  const out = {};
+  Object.values(TRINKET_DEFS).forEach((t) => {
+    out[t.id] = { id: t.id, name: t.name, desc: `Dùng 1 lần: cộng vĩnh viễn ${t.label} cho nhân vật.`, effect: { [t.stat]: t.amount }, price: 45, currency: 'gem', icon: `/assets/game/items/${t.id}.png` };
+  });
+  return out;
+}
+const NEW_CONSUMABLES_MISC = {
+  coin_pouch: { id: 'coin_pouch', name: 'Túi Vàng Bí Ẩn', desc: 'Mở ra nhận ngẫu nhiên 80-220 vàng.', effect: { randomGoldMin: 80, randomGoldMax: 220 }, price: 30, currency: 'gold', icon: '/assets/game/items/coin_pouch.png' },
+  chalice: { id: 'chalice', name: 'Chén Thánh', desc: 'Hồi đầy 100% HP & Ki ngay lập tức + tăng 30% toàn bộ sát thương gây ra trong 60 giây.', effect: { hp: 1.0, ki: 1.0, buffAllDmgPct: 0.3, buffSec: 60 }, price: 20, currency: 'gem', icon: '/assets/game/items/chalice.png' },
+  hourglass: { id: 'hourglass', name: 'Đồng Hồ Cát', desc: 'Đặt lại hồi chiêu (cooldown) toàn bộ chiêu thức đang có về 0 ngay lập tức.', effect: { resetCooldowns: true }, price: 22, currency: 'gem', icon: '/assets/game/items/hourglass.png' },
+  horn: { id: 'horn', name: 'Tù Và Triệu Hồi', desc: 'Gọi (các) pet của bạn dịch chuyển ngay về cạnh bạn, dù đang ở đâu hoặc đang chờ hồi sinh xa.', effect: { recallPets: true }, price: 12, currency: 'gold', icon: '/assets/game/items/horn.png' },
+  energy_orb: { id: 'energy_orb', name: 'Cầu Năng Lượng', desc: 'Hồi đầy 100% Ki + tăng 30% tốc độ hồi Ki trong 180 giây.', effect: { ki: 1.0, buffKiRegenPct: 0.3, buffSec: 180 }, price: 40, currency: 'gold', icon: '/assets/game/items/energy_orb.png' },
+  feather_quill: { id: 'feather_quill', name: 'Bút Lông Đổi Tên', desc: 'Cho phép đổi tên nhân vật 1 lần.', effect: { renameToken: true }, price: 25, currency: 'gem', icon: '/assets/game/items/feather_quill.png' },
+  ring_undying: { id: 'ring_undying', name: 'Nhẫn Bất Tử', desc: 'Kích hoạt: trong 60 giây tới, nếu nhận sát thương đáng lẽ gây tử vong thì bạn giữ lại 1 HP thay vì gục (chỉ kích hoạt 1 lần).', effect: { guardianAngelSec: 60 }, price: 35, currency: 'gem', icon: '/assets/game/items/ring_undying.png' },
+};
+const CONSUMABLES_PET_AURA_ITEMS = { ...NEW_CONSUMABLES_NAMED, ...buildEnhancementGems(), ...buildMaterials(), ...buildKeysAndChest(), ...buildTrinkets(), ...NEW_CONSUMABLES_MISC };
+Object.assign(CONSUMABLES, CONSUMABLES_PET_AURA_ITEMS);
+RARITY_COLOR.super = RARITY_COLOR.super || '#5CE8D8';
+
+// ============================================================================
+// 2 SKILL MẶC ĐỊNH cho MỌI class (không cần chọn/học, luôn có sẵn từ đầu) — nút riêng cạnh nút Đánh,
+// tốn Ki để dùng. Không thuộc `skills` của CLASSES vì áp dụng chung, độc lập nhân vật đang chơi lớp nào.
+// Số liệu (kiCost/cd/quãng đường/độ cao...) không có trong spec — Claude tự đặt mức vừa hữu dụng vừa
+// không phá cân bằng combat hiện có (kiCost tương đương skill nhẹ nhất của class, xem CLASSES.*.skills).
+// ============================================================================
+const UNIVERSAL_SKILLS = {
+  dash: {
+    id: 'dash', name: 'Lướt', desc: 'Lướt nhanh 1 đoạn theo hướng đang di chuyển (hoặc hướng đang quay mặt nếu đứng yên) — né đòn, rút ngắn khoảng cách tới mục tiêu.',
+    kiCost: 15, cd: 5, distance: 170, durationMs: 160,
+  },
+  fly: {
+    id: 'fly', name: 'Bay', desc: 'Bật/tắt bay lên khỏi mặt đất. Tốn Ki ngay khi bật + tốn thêm theo từng giây khi đang bay; hết Ki hoặc bấm lại sẽ tự hạ cánh.',
+    kiCostActivate: 10, kiDrainPerSec: 6, cd: 3, height: 56,
+  },
+};
+
+const SPRITE_MANIFEST = require('./spriteManifest.json'); // characters/monsters/npc/gods/bosses/summons -> {clip: frameCount}
+
 module.exports = {
   CLASSES, ATTRIBUTES, MAX_LEVEL, POINTS_EVERY, STAT_POINTS_PER_TIER, SKILL_POINTS_PER_TIER,
   CONTINENTS, MAPS, MAP_ROLES, MONSTERS, scaleMonster, bossIdFor,
@@ -469,4 +675,9 @@ module.exports = {
   GOD_SPAWN_INTERVAL_MS, GOD_LIFESPAN_MS, MEGA_BOSS_SPAWN_INTERVAL_MS, MEGA_BOSS_IDLE_DESPAWN_MS,
   GOD_GIFT_GOLD, GOD_GIFT_GEM, MEGA_BOSS_KILL_REWARD_VIPCOIN, MEGA_BOSS_SPECIAL_DROP_CHANCE_EACH,
   godStatsFor, megaBossBaseStatsFor, megaBossFormStats, blessingSkillFor, guardianBossStatsFor,
+  // ---- Pet & Aura & Super Set & stat caps (mới) ----
+  PETS, PET_TIER_MULT, PET_DEATH_MS, PET_DROP_CHANCE, PET_MAX_CONTRIBUTORS, PET_BASIC_ATK_MULT,
+  PET_SKILL2_VERSIONS, PET_SKILL3_VERSIONS, PET_SKILL4,
+  AURA, SUPER_SET, SUPER_ITEMS, MEGA_BOSS_SUPER_DROP_CHANCE_EACH,
+  STAT_CAPS, KEY_TIERS, TRINKET_DEFS, UNIVERSAL_SKILLS, SPRITE_MANIFEST,
 };

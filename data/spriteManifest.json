@@ -1,0 +1,612 @@
+{
+  "characters": {
+    "kai": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "combat2": 6,
+      "combat3": 4,
+      "combat4": 5,
+      "death": 6
+    },
+    "ryu": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "combat2": 6,
+      "combat3": 6,
+      "combat4": 6,
+      "death": 6
+    },
+    "kenji": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "combat2": 5,
+      "combat3": 5,
+      "combat4": 5,
+      "death": 6
+    },
+    "may": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "combat2": 5,
+      "combat3": 4,
+      "combat4": 5,
+      "death": 5
+    },
+    "yuki": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 5,
+      "combat2": 6,
+      "combat3": 4,
+      "combat4": 5,
+      "death": 5
+    },
+    "lina": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 5,
+      "combat2": 4,
+      "combat3": 5,
+      "combat4": 5,
+      "death": 5
+    },
+    "malakai": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 5,
+      "combat2": 6,
+      "combat3": 6,
+      "death": 6
+    }
+  },
+  "monsters": {
+    "light_sentinel": {
+      "idle": 6,
+      "walk": 7,
+      "combat1": 7,
+      "death": 7
+    },
+    "celestial_archer": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 5,
+      "death": 7
+    },
+    "holy_priest": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 7
+    },
+    "lava_hound": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 6
+    },
+    "fire_elemental": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 6
+    },
+    "draconic_warrior": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 7
+    },
+    "forest_spirit": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 6
+    },
+    "wild_beast": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 6
+    },
+    "nature_protector": {
+      "idle": 6,
+      "walk": 7,
+      "combat1": 6,
+      "death": 7
+    },
+    "shadow_wraith": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 6
+    },
+    "dark_cultist": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 6
+    },
+    "shadow_fiend": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 6
+    },
+    "coral_guardian": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 6
+    },
+    "deep_sea_hunter": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 7,
+      "combat2": 6,
+      "death": 5
+    },
+    "abyss_mage": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 7
+    },
+    "frost_wolf": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "combat2": 6,
+      "death": 7
+    },
+    "ice_golem": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 6
+    },
+    "frost_shaman": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 6
+    },
+    "sand_scorpion": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 6
+    },
+    "desert_raider": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 7
+    },
+    "sand_elemental": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 6
+    },
+    "sky_harpy": {
+      "idle": 6,
+      "walk": 5,
+      "combat1": 6,
+      "death": 7
+    },
+    "cloud_knight": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 6
+    },
+    "storm_dragonling": {
+      "idle": 6,
+      "walk": 5,
+      "combat1": 6,
+      "death": 6
+    }
+  },
+  "npc": {
+    "aurelion_npc_quest": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "aurelion_npc_weapon": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "aurelion_npc_armor": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "aurelion_npc_potion": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "aurelion_npc_portal": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "draconia_npc_quest": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "draconia_npc_weapon": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "draconia_npc_armor": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "draconia_npc_potion": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "draconia_npc_portal": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "verdantia_npc_quest": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "verdantia_npc_weapon": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "verdantia_npc_armor": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "verdantia_npc_potion": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "verdantia_npc_portal": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "shadowfell_npc_quest": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "shadowfell_npc_weapon": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "shadowfell_npc_armor": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "shadowfell_npc_potion": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "shadowfell_npc_portal": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "aquaris_npc_quest": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "aquaris_npc_weapon": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "aquaris_npc_armor": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "aquaris_npc_potion": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "aquaris_npc_portal": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "crystalia_npc_quest": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "crystalia_npc_weapon": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "crystalia_npc_armor": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "crystalia_npc_potion": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "crystalia_npc_portal": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "sandoria_npc_quest": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "sandoria_npc_weapon": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "sandoria_npc_armor": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "sandoria_npc_potion": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "sandoria_npc_portal": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "celestia_npc_quest": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "celestia_npc_weapon": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "celestia_npc_armor": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "celestia_npc_potion": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    },
+    "celestia_npc_portal": {
+      "idle": 6,
+      "walk": 6,
+      "death": 6
+    }
+  },
+  "gods": {
+    "aurelion": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "combat2": 5,
+      "combat3": 5,
+      "death": 6
+    },
+    "draconia": {
+      "idle": 5,
+      "walk": 5,
+      "combat1": 5,
+      "combat2": 5,
+      "combat3": 5,
+      "combat4": 4,
+      "death": 6
+    },
+    "verdantia": {
+      "idle": 6,
+      "walk": 5,
+      "combat1": 5,
+      "combat2": 6,
+      "combat3": 5,
+      "death": 7
+    },
+    "shadowfell": {
+      "idle": 5,
+      "walk": 5,
+      "combat1": 5,
+      "combat2": 6,
+      "combat3": 5,
+      "death": 7
+    },
+    "aquaris": {
+      "idle": 6,
+      "walk": 5,
+      "combat1": 5,
+      "combat2": 6,
+      "combat3": 6,
+      "death": 6
+    },
+    "crystalia": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 5,
+      "combat2": 6,
+      "combat3": 6,
+      "death": 6
+    },
+    "sandoria": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "combat2": 6,
+      "combat3": 6,
+      "death": 6
+    },
+    "celestia": {
+      "idle": 6,
+      "walk": 5,
+      "combat1": 5,
+      "combat2": 6,
+      "combat3": 6,
+      "death": 6
+    }
+  },
+  "bosses": {
+    "b_aurelion": {
+      "idle": 6,
+      "walk": 4,
+      "combat1": 5,
+      "combat2": 5,
+      "combat3": 4,
+      "death": 6
+    },
+    "b_umbraxia": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "combat2": 5,
+      "combat3": 6,
+      "death": 6
+    },
+    "b_ignis": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 5,
+      "combat2": 6,
+      "combat3": 5,
+      "death": 6
+    },
+    "b_aquaris": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "combat2": 6,
+      "combat3": 6,
+      "death": 6
+    },
+    "b_verdantia": {
+      "idle": 5,
+      "walk": 5,
+      "combat1": 5,
+      "combat2": 5,
+      "combat3": 6,
+      "death": 6
+    },
+    "b_terranos": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 5,
+      "combat2": 6,
+      "combat3": 5,
+      "death": 6
+    },
+    "b_voltarion": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "combat2": 6,
+      "combat3": 5,
+      "death": 6
+    },
+    "b_glaciera": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "combat2": 6,
+      "combat3": 5,
+      "death": 6
+    },
+    "b_chaoseraph_form1": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "combat2": 6,
+      "combat3": 6,
+      "death": 6
+    },
+    "b_chaoseraph_form2": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "combat2": 6,
+      "combat3": 6,
+      "death": 6
+    },
+    "b_chaoseraph_form3": {
+      "idle": 6,
+      "walk": 5,
+      "combat1": 5,
+      "combat2": 6,
+      "combat3": 6,
+      "death": 6
+    },
+    "b_chaoseraph_form4": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "combat2": 5,
+      "combat3": 7,
+      "death": 6
+    },
+    "b_chaoseraph_form5": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "combat2": 6,
+      "combat3": 6,
+      "death": 6
+    },
+    "b_morphiel_beast": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "combat2": 6,
+      "combat3": 6,
+      "death": 6
+    }
+  },
+  "summons": {
+    "bone_warrior": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 6,
+      "death": 6
+    },
+    "stone_golem": {
+      "idle": 6,
+      "walk": 6,
+      "combat1": 1,
+      "combat2": 6,
+      "death": 6
+    }
+  }
+}
