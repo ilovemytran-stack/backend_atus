@@ -24,6 +24,9 @@ const shopProductSchema = new mongoose.Schema({
   specs: { type: [String], default: [] },
   images: { type: [String], default: [] },
   sellerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true }, // null = sản phẩm mẫu của sàn
+  // pending = chờ admin duyệt (mặc định cho người bán mới đăng), approved = hiển thị công khai, rejected = admin từ chối.
+  approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'approved', index: true },
+  rejectionReason: { type: String, default: '' },
   digitalStock: { type: [String], default: [] }, // chỉ dùng khi category='digital'; mỗi phần tử = 1 thông tin đăng nhập/giao hàng CHƯA bán
   deleted: { type: Boolean, default: false, index: true },
 }, { timestamps: true });

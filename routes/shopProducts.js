@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const mongoose = require('mongoose');
 const ShopProduct = require('../models/ShopProduct');
-const { protect } = require('../middleware/auth');
+const { protect, optionalAuth } = require('../middleware/auth');
 
 function toClient(p) {
   return {
@@ -10,6 +10,7 @@ function toClient(p) {
     likes: p.likes, dislikes: p.dislikes, tag: p.tag, stock: p.stock, status: p.status,
     desc: p.desc, specs: p.specs, images: p.images,
     sellerId: p.sellerId ? String(p.sellerId) : null,
+    approvalStatus: p.approvalStatus || 'approved', rejectionReason: p.rejectionReason || '',
     digitalStockCount: (p.digitalStock || []).length, // KHÔNG gửi nội dung digitalStock ra ngoài — đó là hàng chưa bán, chỉ giao khi mua thật
   };
 }
@@ -19,15 +20,21 @@ function isOwnerOrAdmin(req, product) {
   return product.sellerId && String(product.sellerId) === String(req.user._id);
 }
 
-// Danh sách công khai — mọi người (kể cả khách) đều thấy CÙNG 1 danh sách thật
-router.get('/', async (req, res) => {
+// Danh sách công khai — khách/người dùng thường chỉ thấy sản phẩm đã được admin duyệt ('approved').
+// Nếu đã đăng nhập, vẫn thấy thêm CHÍNH sản phẩm của mình dù đang 'pending'/'rejected' (để tự theo dõi
+// trạng thái duyệt trong trang quản lý người bán) — admin thấy tất cả, kể cả sản phẩm mẫu cũ nếu còn.
+router.get('/', optionalAuth, async (req, res) => {
   try {
-    const products = await ShopProduct.find({ deleted: false });
+    const filter = { deleted: false };
+    if (!req.user || req.user.role !== 'admin') {
+      filter.$or = [{ approvalStatus: 'approved' }, ...(req.user ? [{ sellerId: req.user._id }] : [])];
+    }
+    const products = await ShopProduct.find(filter);
     res.json({ success: true, products: products.map(toClient) });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// Người bán thêm sản phẩm mới
+// Người bán thêm sản phẩm mới — vào hàng chờ duyệt ('pending'), admin duyệt xong mới hiện công khai
 router.post('/', protect, async (req, res) => {
   try {
     const { name, category, iconKey, price, originalPrice, desc, specs, images, stock, status } = req.body;
@@ -44,8 +51,9 @@ router.post('/', protect, async (req, res) => {
       stock: category === 'digital' ? 0 : (stock || 0),
       status: category === 'digital' ? 'out-of-stock' : (status || 'in-stock'),
       sellerId: req.user._id,
+      approvalStatus: req.user.role === 'admin' ? 'approved' : 'pending',
     });
-    res.json({ success: true, product: toClient(product) });
+    res.json({ success: true, product: toClient(product), message: req.user.role === 'admin' ? undefined : 'Sản phẩm đã gửi cho admin duyệt, sẽ hiển thị công khai sau khi được chấp thuận.' });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 

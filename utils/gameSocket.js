@@ -89,12 +89,25 @@ module.exports = (io) => {
       io.to(roomOf(mapId, cur.zone)).emit('game_chat_message', { userId, name: p?.name || '???', text: text.trim().slice(0, 140) });
     });
 
-    // Chat Thế Giới: phát cho TOÀN BỘ người chơi đang online, không giới hạn theo map/khu vực
-    socket.on('game_world_chat', ({ text }) => {
+    // Chat Thế Giới: phát cho TOÀN BỘ người chơi đang online, không giới hạn theo map/khu vực.
+    // Tốn 100 Ngọc/lần — trừ bằng update nguyên tử có điều kiện ($gte) để tránh âm Ngọc khi bấm gửi liên tục.
+    const WORLD_CHAT_COST = 100;
+    socket.on('game_world_chat', async ({ text }) => {
       if (!text || !text.trim()) return;
-      const cur = socketMap.get(socket.id);
-      const p = cur ? getZoneRoom(cur.mapId, cur.zone).get(userId) : null;
-      io.emit('game_world_chat_message', { userId, name: p?.name || '???', text: text.trim().slice(0, 140), at: Date.now() });
+      try {
+        const updated = await Character.findOneAndUpdate(
+          { user: userId, gem: { $gte: WORLD_CHAT_COST } },
+          { $inc: { gem: -WORLD_CHAT_COST } },
+          { new: true }
+        ).select('gem');
+        if (!updated) { socket.emit('game_world_chat_error', { message: `Cần ${WORLD_CHAT_COST} Ngọc để gửi Chat Thế Giới` }); return; }
+        socket.emit('game_world_chat_paid', { gem: updated.gem, cost: WORLD_CHAT_COST });
+        const cur = socketMap.get(socket.id);
+        const p = cur ? getZoneRoom(cur.mapId, cur.zone).get(userId) : null;
+        io.emit('game_world_chat_message', { userId, name: p?.name || '???', text: text.trim().slice(0, 140), at: Date.now() });
+      } catch {
+        socket.emit('game_world_chat_error', { message: 'Lỗi khi gửi Chat Thế Giới, thử lại sau' });
+      }
     });
 
     // Chat Bang Hội: chỉ phát cho thành viên cùng bang (room 'guild_{id}' đã join sẵn lúc connect)

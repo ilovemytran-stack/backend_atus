@@ -277,4 +277,39 @@ router.delete('/announcements/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
+// ===== DUYỆT SẢN PHẨM ROOT SHOP =====
+const ShopProduct = require('../models/ShopProduct');
+
+router.get('/shop/pending', async (req, res) => {
+  try {
+    const list = await ShopProduct.find({ approvalStatus: 'pending', deleted: false })
+      .sort('-createdAt').populate('sellerId', 'username displayName');
+    res.json({ success: true, products: list.map((p) => ({
+      id: p._id, name: p.name, category: p.category, price: p.price, desc: p.desc,
+      images: p.images, createdAt: p.createdAt,
+      seller: p.sellerId ? { id: p.sellerId._id, username: p.sellerId.username, displayName: p.sellerId.displayName } : null,
+    })) });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+router.put('/shop/:id/approve', async (req, res) => {
+  try {
+    const p = await ShopProduct.findById(req.params.id);
+    if (!p) return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
+    p.approvalStatus = 'approved'; p.rejectionReason = '';
+    await p.save();
+    res.json({ success: true, message: `Đã duyệt "${p.name}"` });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+router.put('/shop/:id/reject', async (req, res) => {
+  try {
+    const p = await ShopProduct.findById(req.params.id);
+    if (!p) return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
+    p.approvalStatus = 'rejected'; p.rejectionReason = (req.body.reason || '').trim().slice(0, 300);
+    await p.save();
+    res.json({ success: true, message: `Đã từ chối "${p.name}"` });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
 module.exports = router;

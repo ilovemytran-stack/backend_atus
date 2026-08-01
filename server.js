@@ -68,18 +68,14 @@ require('./utils/socket')(io);
 mongoose.connect(process.env.MONGODB_URI)
   .then(async () => {
     console.log('✅ MongoDB connected');
-    // Nạp 12 sản phẩm mẫu ban đầu của Root Shop nếu collection còn trống —
-    // chỉ chạy 1 lần, không đụng dữ liệu nếu đã có sản phẩm nào (kể cả do
-    // người bán tự thêm).
+    // Dọn sản phẩm MẪU cũ của Root Shop (sellerId=null) — trước đây tự nạp lúc khởi động, giờ bỏ hẳn.
+    // An toàn chạy lại mỗi lần khởi động: sản phẩm thật của người bán luôn có sellerId nên không bị đụng tới.
     try {
       const ShopProduct = require('./models/ShopProduct');
-      const count = await ShopProduct.countDocuments();
-      if (count === 0) {
-        await ShopProduct.insertMany(require('./data/shopSeedProducts'));
-        console.log('✅ Đã nạp sản phẩm mẫu Root Shop');
-      }
-    } catch (seedErr) {
-      console.error('❌ Lỗi nạp sản phẩm mẫu:', seedErr.message);
+      const { deletedCount } = await ShopProduct.deleteMany({ sellerId: null });
+      if (deletedCount) console.log(`✅ Đã xoá ${deletedCount} sản phẩm mẫu Root Shop`);
+    } catch (cleanupErr) {
+      console.error('❌ Lỗi xoá sản phẩm mẫu:', cleanupErr.message);
     }
   })
   .catch(err => console.error('❌ MongoDB error:', err));
