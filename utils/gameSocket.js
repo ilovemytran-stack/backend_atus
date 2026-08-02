@@ -90,24 +90,26 @@ module.exports = (io) => {
     });
 
     // Chat Thế Giới: phát cho TOÀN BỘ người chơi đang online, không giới hạn theo map/khu vực.
-    // Tốn 100 Ngọc/lần — trừ bằng update nguyên tử có điều kiện ($gte) để tránh âm Ngọc khi bấm gửi liên tục.
+    // Tốn 100 Ngọc/lần gửi (trừ thẳng ở DB, không tin số liệu từ client) — hiện dạng bảng góc phải trên
+    // màn hình, mỗi dòng tự biến mất sau 15s (client tự đếm giờ dựa vào expiresAt gửi kèm ở đây).
     const WORLD_CHAT_COST = 100;
+    const WORLD_CHAT_DURATION_MS = 15000;
     socket.on('game_world_chat', async ({ text }) => {
       if (!text || !text.trim()) return;
       try {
-        const updated = await Character.findOneAndUpdate(
-          { user: userId, gem: { $gte: WORLD_CHAT_COST } },
-          { $inc: { gem: -WORLD_CHAT_COST } },
-          { new: true }
-        ).select('gem');
-        if (!updated) { socket.emit('game_world_chat_error', { message: `Cần ${WORLD_CHAT_COST} Ngọc để gửi Chat Thế Giới` }); return; }
-        socket.emit('game_world_chat_paid', { gem: updated.gem, cost: WORLD_CHAT_COST });
+        const char = await Character.findOne({ user: userId });
+        if (!char) return;
+        if ((char.gem || 0) < WORLD_CHAT_COST) {
+          socket.emit('game_world_chat_error', { message: `Cần ${WORLD_CHAT_COST} Ngọc để gửi Chat Thế Giới (hiện có ${char.gem || 0})` });
+          return;
+        }
+        char.gem -= WORLD_CHAT_COST;
+        await char.save();
+        socket.emit('game_currency_update', { gold: char.gold, gem: char.gem });
         const cur = socketMap.get(socket.id);
         const p = cur ? getZoneRoom(cur.mapId, cur.zone).get(userId) : null;
-        io.emit('game_world_chat_message', { userId, name: p?.name || '???', text: text.trim().slice(0, 140), at: Date.now() });
-      } catch {
-        socket.emit('game_world_chat_error', { message: 'Lỗi khi gửi Chat Thế Giới, thử lại sau' });
-      }
+        io.emit('game_world_chat_message', { userId, name: p?.name || char.name || '???', text: text.trim().slice(0, 140), at: Date.now(), expiresAt: Date.now() + WORLD_CHAT_DURATION_MS });
+      } catch (e) { /* bỏ qua lỗi 1 lần gửi, không crash socket */ }
     });
 
     // Chat Bang Hội: chỉ phát cho thành viên cùng bang (room 'guild_{id}' đã join sẵn lúc connect)
