@@ -32,6 +32,15 @@ app.post('/weebhook/sepay', express.raw({ type: '*/*' }), require('./routes/sepa
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Health check for Render/UptimeRobot.
+// This endpoint is intentionally lightweight and does not require MongoDB.
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    time: new Date().toISOString()
+  });
+});
+
 // Rate limiting
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 20 }));
 app.use('/api/ai', rateLimit({ windowMs: 10 * 60 * 1000, max: 20, message: { success: false, message: 'Bạn hỏi AI quá nhanh, thử lại sau ít phút.' } }));
@@ -57,9 +66,6 @@ app.use('/api/shop/orders', require('./routes/shopOrders'));
 app.use('/api/media', require('./routes/media'));
 app.use('/api/atelier/projects', require('./routes/atelierProjects'));
 app.use('/api/ai', require('./routes/ai'));
-
-// Health check
-app.get('/health', (_, res) => res.json({ status: 'ok', time: new Date() }));
 
 // Socket.io handlers
 require('./utils/socket')(io);
