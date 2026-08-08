@@ -30,6 +30,17 @@ const userSchema = new mongoose.Schema({
   isBanned: { type: Boolean, default: false },
   banReason: { type: String, default: '' },
   usernameChangedAt: { type: Date, default: null },
+  // Đăng ký người bán Root Shop — PHẢI qua admin duyệt (status) mới được đăng sản phẩm, xem
+  // routes/shopProducts.js (chặn POST /shop/products nếu seller.status !== 'approved').
+  seller: {
+    idCardNumber: { type: String, default: '' },
+    phone: { type: String, default: '' },
+    status: { type: String, enum: ['none', 'pending', 'approved', 'rejected'], default: 'none' },
+    rejectReason: { type: String, default: '' },
+    registeredAt: { type: Date, default: null },
+    reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    reviewedAt: { type: Date, default: null },
+  },
 }, { timestamps: true });
 
 userSchema.pre('save', async function(next) {

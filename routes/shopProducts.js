@@ -10,8 +10,9 @@ function toClient(p) {
     likes: p.likes, dislikes: p.dislikes, tag: p.tag, stock: p.stock, status: p.status,
     desc: p.desc, specs: p.specs, images: p.images,
     sellerId: p.sellerId ? String(p.sellerId) : null,
-    approvalStatus: p.approvalStatus || 'approved', rejectionReason: p.rejectionReason || '',
     digitalStockCount: (p.digitalStock || []).length, // KHÔNG gửi nội dung digitalStock ra ngoài — đó là hàng chưa bán, chỉ giao khi mua thật
+    moderationStatus: p.moderation?.status || 'approved', // để chủ sản phẩm biết đang chờ duyệt/bị từ chối
+    moderationReason: p.moderation?.reason || '',
   };
 }
 
@@ -20,23 +21,52 @@ function isOwnerOrAdmin(req, product) {
   return product.sellerId && String(product.sellerId) === String(req.user._id);
 }
 
-// Danh sách công khai — khách/người dùng thường chỉ thấy sản phẩm đã được admin duyệt ('approved').
-// Nếu đã đăng nhập, vẫn thấy thêm CHÍNH sản phẩm của mình dù đang 'pending'/'rejected' (để tự theo dõi
-// trạng thái duyệt trong trang quản lý người bán) — admin thấy tất cả, kể cả sản phẩm mẫu cũ nếu còn.
+const User = require('../models/User');
+const Notification = require('../models/Notification');
+
+// Đăng ký làm người bán — GỬI THẬT lên server (trước đây chỉ set state React ở client, admin không
+// thấy được gì). Vào trạng thái "pending", CHƯA đăng được sản phẩm nào cho tới khi admin duyệt.
+router.post('/seller/register', protect, async (req, res) => {
+  try {
+    const { idCardNumber, phone } = req.body;
+    if (!idCardNumber || !phone) return res.status(400).json({ success: false, message: 'Thiếu CMND/CCCD hoặc số điện thoại' });
+    const user = await User.findById(req.user._id);
+    if (user.seller?.status === 'approved') return res.status(400).json({ success: false, message: 'Bạn đã là người bán được duyệt rồi' });
+    if (user.seller?.status === 'pending') return res.status(400).json({ success: false, message: 'Đơn đăng ký của bạn đang chờ duyệt' });
+    user.seller = { idCardNumber, phone, status: 'pending', registeredAt: new Date(), rejectReason: '', reviewedBy: null, reviewedAt: null };
+    await user.save();
+    res.json({ success: true, seller: user.seller, message: 'Đã gửi đăng ký người bán, chờ admin duyệt.' });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+router.get('/seller/status', protect, async (req, res) => {
+  const user = await User.findById(req.user._id);
+  res.json({ success: true, seller: user.seller || { status: 'none' } });
+});
+
+// Danh sách công khai — CHỈ sản phẩm đã duyệt (moderation.status='approved'), CỘNG THÊM sản phẩm
+// pending/rejected của CHÍNH người đang xem (nếu đã đăng nhập) để họ tự theo dõi được đơn của mình.
 router.get('/', optionalAuth, async (req, res) => {
   try {
-    const filter = { deleted: false };
-    if (!req.user || req.user.role !== 'admin') {
-      filter.$or = [{ approvalStatus: 'approved' }, ...(req.user ? [{ sellerId: req.user._id }] : [])];
-    }
-    const products = await ShopProduct.find(filter);
+    const or = [{ 'moderation.status': 'approved' }];
+    if (req.user) or.push({ sellerId: req.user._id });
+    const products = await ShopProduct.find({ deleted: false, $or: or });
     res.json({ success: true, products: products.map(toClient) });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// Người bán thêm sản phẩm mới — vào hàng chờ duyệt ('pending'), admin duyệt xong mới hiện công khai
+// Người bán thêm sản phẩm mới — PHẢI là người bán đã được admin duyệt (seller.status==='approved'),
+// admin thì luôn được phép (đăng sản phẩm chính chủ sàn). Sản phẩm vào trạng thái "pending", CHƯA hiện
+// công khai cho tới khi admin duyệt riêng TỪNG sản phẩm (2 lớp duyệt: duyệt người bán + duyệt từng món).
 router.post('/', protect, async (req, res) => {
   try {
+    const isAdmin = req.user.role === 'admin';
+    if (!isAdmin && req.user.seller?.status !== 'approved') {
+      return res.status(403).json({
+        success: false,
+        message: req.user.seller?.status === 'pending' ? 'Đơn đăng ký người bán đang chờ duyệt' : 'Bạn cần đăng ký làm người bán và được admin duyệt trước khi đăng sản phẩm',
+      });
+    }
     const { name, category, iconKey, price, originalPrice, desc, specs, images, stock, status } = req.body;
     if (!name || !category || !price) {
       return res.status(400).json({ success: false, message: 'Thiếu tên/danh mục/giá' });
@@ -51,9 +81,12 @@ router.post('/', protect, async (req, res) => {
       stock: category === 'digital' ? 0 : (stock || 0),
       status: category === 'digital' ? 'out-of-stock' : (status || 'in-stock'),
       sellerId: req.user._id,
-      approvalStatus: req.user.role === 'admin' ? 'approved' : 'pending',
+      moderation: isAdmin ? { status: 'approved', reviewedBy: req.user._id, reviewedAt: new Date() } : { status: 'pending' },
     });
-    res.json({ success: true, product: toClient(product), message: req.user.role === 'admin' ? undefined : 'Sản phẩm đã gửi cho admin duyệt, sẽ hiển thị công khai sau khi được chấp thuận.' });
+    res.json({
+      success: true, product: toClient(product),
+      message: isAdmin ? undefined : 'Sản phẩm đã được gửi, chờ admin duyệt trước khi hiển thị công khai.',
+    });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 

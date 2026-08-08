@@ -24,9 +24,14 @@ const shopProductSchema = new mongoose.Schema({
   specs: { type: [String], default: [] },
   images: { type: [String], default: [] },
   sellerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true }, // null = sản phẩm mẫu của sàn
-  // pending = chờ admin duyệt (mặc định cho người bán mới đăng), approved = hiển thị công khai, rejected = admin từ chối.
-  approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'approved', index: true },
-  rejectionReason: { type: String, default: '' },
+  // Duyệt sản phẩm: người bán đăng lên -> "pending" (CHƯA hiện công khai) -> admin duyệt mới "approved".
+  // Admin tự thêm sản phẩm (route dùng adminOnly) thì auto-approved luôn, không cần tự duyệt chính mình.
+  moderation: {
+    status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending', index: true },
+    reason: { type: String, default: '' }, // lý do từ chối (nếu có) để người bán biết sửa gì
+    reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    reviewedAt: { type: Date, default: null },
+  },
   digitalStock: { type: [String], default: [] }, // chỉ dùng khi category='digital'; mỗi phần tử = 1 thông tin đăng nhập/giao hàng CHƯA bán
   deleted: { type: Boolean, default: false, index: true },
 }, { timestamps: true });

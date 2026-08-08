@@ -277,38 +277,118 @@ router.delete('/announcements/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// ===== DUYỆT SẢN PHẨM ROOT SHOP =====
+// ===== DUYỆT NGƯỜI BÁN Root Shop (đăng ký làm người bán — PHẢI duyệt trước khi được đăng sản phẩm) =====
+router.get('/shop/sellers/pending', async (req, res) => {
+  try {
+    const list = await User.find({ 'seller.status': 'pending' }).select('username displayName email seller');
+    res.json({ success: true, sellers: list });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+router.post('/shop/sellers/:userId/approve', async (req, res) => {
+  try {
+    const u = await User.findById(req.params.userId);
+    if (!u) return res.status(404).json({ success: false, message: 'Không tìm thấy user' });
+    u.seller.status = 'approved'; u.seller.reviewedBy = req.user._id; u.seller.reviewedAt = new Date();
+    await u.save();
+    await Notification.create({ recipient: u._id, sender: req.user._id, type: 'shop_product_approved', message: 'Đơn đăng ký người bán của bạn đã được duyệt — giờ bạn có thể đăng sản phẩm tại Root Shop.' });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+router.post('/shop/sellers/:userId/reject', async (req, res) => {
+  try {
+    const u = await User.findById(req.params.userId);
+    if (!u) return res.status(404).json({ success: false, message: 'Không tìm thấy user' });
+    const reason = (req.body.reason || '').trim();
+    u.seller.status = 'rejected'; u.seller.rejectReason = reason; u.seller.reviewedBy = req.user._id; u.seller.reviewedAt = new Date();
+    await u.save();
+    await Notification.create({ recipient: u._id, sender: req.user._id, type: 'shop_product_rejected', message: `Đơn đăng ký người bán bị từ chối.${reason ? ' Lý do: ' + reason : ''}` });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// ===== DUYỆT SẢN PHẨM ROOT SHOP (sản phẩm người bán đăng lên chờ admin duyệt trước khi hiện công khai) =====
 const ShopProduct = require('../models/ShopProduct');
+const Notification = require('../models/Notification');
 
 router.get('/shop/pending', async (req, res) => {
   try {
-    const list = await ShopProduct.find({ approvalStatus: 'pending', deleted: false })
-      .sort('-createdAt').populate('sellerId', 'username displayName');
-    res.json({ success: true, products: list.map((p) => ({
-      id: p._id, name: p.name, category: p.category, price: p.price, desc: p.desc,
-      images: p.images, createdAt: p.createdAt,
-      seller: p.sellerId ? { id: p.sellerId._id, username: p.sellerId.username, displayName: p.sellerId.displayName } : null,
-    })) });
+    const list = await ShopProduct.find({ deleted: false, 'moderation.status': 'pending' }).sort('-createdAt').populate('sellerId', 'username displayName');
+    res.json({ success: true, products: list });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-router.put('/shop/:id/approve', async (req, res) => {
+router.post('/shop/:id/approve', async (req, res) => {
   try {
     const p = await ShopProduct.findById(req.params.id);
     if (!p) return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
-    p.approvalStatus = 'approved'; p.rejectionReason = '';
+    p.moderation = { status: 'approved', reason: '', reviewedBy: req.user._id, reviewedAt: new Date() };
     await p.save();
-    res.json({ success: true, message: `Đã duyệt "${p.name}"` });
+    if (p.sellerId) await Notification.create({ recipient: p.sellerId, sender: req.user._id, type: 'shop_product_approved', message: `Sản phẩm "${p.name}" đã được duyệt và hiển thị công khai trên Root Shop.` });
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-router.put('/shop/:id/reject', async (req, res) => {
+router.post('/shop/:id/reject', async (req, res) => {
   try {
     const p = await ShopProduct.findById(req.params.id);
     if (!p) return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
-    p.approvalStatus = 'rejected'; p.rejectionReason = (req.body.reason || '').trim().slice(0, 300);
+    const reason = (req.body.reason || '').trim();
+    p.moderation = { status: 'rejected', reason, reviewedBy: req.user._id, reviewedAt: new Date() };
     await p.save();
-    res.json({ success: true, message: `Đã từ chối "${p.name}"` });
+    if (p.sellerId) await Notification.create({ recipient: p.sellerId, sender: req.user._id, type: 'shop_product_rejected', message: `Sản phẩm "${p.name}" bị từ chối duyệt.${reason ? ' Lý do: ' + reason : ''}` });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// ===== DỮ LIỆU GAME (kiểu bảng MongoDB/MySQL — liệt kê + sửa mọi id trong G.Legendary) =====
+const GO = require('../utils/gameOverrides');
+const GameConfigOverride = require('../models/GameConfigOverride');
+
+router.get('/gamedb/categories', (req, res) => {
+  res.json({ success: true, categories: GO.CATEGORIES.map((c) => ({ id: c, label: GO.CATEGORY_LABEL[c], count: GO.listCategory(c).length })) });
+});
+
+router.get('/gamedb/:category', (req, res) => {
+  const rows = GO.listCategory(req.params.category);
+  if (!rows) return res.status(400).json({ success: false, message: 'Category không hợp lệ' });
+  res.json({ success: true, rows });
+});
+
+router.post('/gamedb/:category/:itemId', adminOnly, async (req, res) => {
+  try {
+    const { category, itemId } = req.params;
+    const patch = req.body.patch || {};
+    const entity = GO.applyPatch(category, itemId, patch);
+    if (!entity) return res.status(404).json({ success: false, message: `Không tìm thấy "${itemId}" trong ${category}` });
+    const existing = await GameConfigOverride.findOne({ category, itemId });
+    const mergedPatch = { ...(existing?.patch || {}), ...patch };
+    await GameConfigOverride.findOneAndUpdate(
+      { category, itemId },
+      { $set: { patch: mergedPatch, updatedBy: req.user._id } },
+      { upsert: true },
+    );
+    res.json({ success: true, entity });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+router.post('/gamedb/:category/:itemId/reset', adminOnly, async (req, res) => {
+  try {
+    await GameConfigOverride.deleteOne({ category: req.params.category, itemId: req.params.itemId });
+    res.json({ success: true, message: 'Đã xoá override — cần khởi động lại server để trở về giá trị gốc trong code (giá trị đang chạy trong bộ nhớ vẫn giữ patch cũ tới lúc đó).' });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// ===== GM COMMAND CONSOLE (buff/hp/mp/damage/armor/rs/re1/del) — CHỈ admin, không cho moderator =====
+const { executeGmCommand } = require('../utils/gmCommands');
+
+router.post('/game/console', adminOnly, async (req, res) => {
+  try {
+    const { command, targetCharId } = req.body;
+    if (!command) return res.status(400).json({ success: false, message: 'Thiếu lệnh' });
+    const result = await executeGmCommand(command, { targetCharId, adminUserId: req.user._id });
+    res.json(result);
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 

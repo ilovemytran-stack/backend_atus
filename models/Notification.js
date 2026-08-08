@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const notificationSchema = new mongoose.Schema({
   recipient: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  type: { type: String, enum: ['like', 'comment', 'follow', 'share', 'mention', 'video_like', 'video_comment'], required: true },
+  type: { type: String, enum: ['like', 'comment', 'follow', 'share', 'mention', 'video_like', 'video_comment', 'shop_product_approved', 'shop_product_rejected'], required: true },
   post: { type: mongoose.Schema.Types.ObjectId, ref: 'Post' },
   video: { type: mongoose.Schema.Types.ObjectId, ref: 'Video' },
   message: String,

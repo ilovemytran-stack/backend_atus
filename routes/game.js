@@ -202,6 +202,7 @@ function computeStats(char) {
   // cộng dồn vĩnh viễn từ đá cường hoá / huy hiệu (mục vật phẩm mới, dùng 1 lần)
   const pb = char.permBonus || {};
   atk += pb.atk || 0; def += pb.def || 0; hp += pb.hp || 0; spd += pb.spd || 0; crit += pb.crit || 0;
+  ki += pb.ki || 0;
 
   // Hào Quang (Aura) — % nhân sau khi đã cộng hết đồ + phước lành + cường hoá
   if (char.hasAura) {
@@ -387,6 +388,10 @@ router.post('/character/kill-monster', protect, async (req, res) => {
 });
 
 // point 9/11: mua đồ từ NPC (vũ khí / trang bị / vật phẩm hồi phục)
+// Vật phẩm "nhiều lần dùng / 1 cái" — mua 1 lần nhưng cộng thẳng số LƯỢT (charges) vào qty luôn, dùng
+// route use-item/move như cũ (mỗi lượt vẫn trừ qty -1) nên không cần sửa logic tiêu thụ ở đâu khác.
+const MULTI_CHARGE_ITEMS = { teleport_scroll: 10 }; // Truyền Tống Phù: 1 lá = 10 lượt dịch chuyển
+
 router.post('/character/buy', protect, async (req, res) => {
   try {
     const { itemId, kind } = req.body; // kind: weapon | armor | consumable
@@ -399,9 +404,10 @@ router.post('/character/buy', protect, async (req, res) => {
     const currency = item.currency || 'gold';
     if (char[currency] < item.price) return res.status(400).json({ success: false, message: `Không đủ ${currency === 'gold' ? 'vàng' : 'kim cương'}` });
     char[currency] -= item.price;
+    const grantQty = MULTI_CHARGE_ITEMS[itemId] || 1;
     const existing = char.inventory.find((i) => i.itemId === itemId && i.kind === kind);
-    if (existing && kind === 'consumable') existing.qty += 1;
-    else char.inventory.push({ itemId, kind, qty: 1 });
+    if (existing && kind === 'consumable') existing.qty += grantQty;
+    else char.inventory.push({ itemId, kind, qty: grantQty });
     if (kind === 'weapon') { char.questProgress = { ...char.questProgress, q_gear_up: 1 }; char.markModified('questProgress'); }
     await char.save();
     res.json({ success: true, character: publicChar(char) });

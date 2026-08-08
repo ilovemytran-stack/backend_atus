@@ -68,14 +68,13 @@ require('./utils/socket')(io);
 mongoose.connect(process.env.MONGODB_URI)
   .then(async () => {
     console.log('✅ MongoDB connected');
-    // Dọn sản phẩm MẪU cũ của Root Shop (sellerId=null) — trước đây tự nạp lúc khởi động, giờ bỏ hẳn.
-    // An toàn chạy lại mỗi lần khởi động: sản phẩm thật của người bán luôn có sellerId nên không bị đụng tới.
+    // Áp toàn bộ chỉnh sửa (giá/máu/giáp...) admin đã lưu qua bảng Dữ Liệu Game vào gameData.js đang
+    // chạy trong bộ nhớ — xem backend/utils/gameOverrides.js. Không còn tự nạp sản phẩm mẫu Root Shop
+    // nữa (đã bỏ theo yêu cầu xoá toàn bộ sản phẩm mẫu — xem backend/data/shopSeedProducts.js).
     try {
-      const ShopProduct = require('./models/ShopProduct');
-      const { deletedCount } = await ShopProduct.deleteMany({ sellerId: null });
-      if (deletedCount) console.log(`✅ Đã xoá ${deletedCount} sản phẩm mẫu Root Shop`);
-    } catch (cleanupErr) {
-      console.error('❌ Lỗi xoá sản phẩm mẫu:', cleanupErr.message);
+      await require('./utils/gameOverrides').loadOverridesFromDB();
+    } catch (ovErr) {
+      console.error('❌ Lỗi nạp game overrides:', ovErr.message);
     }
   })
   .catch(err => console.error('❌ MongoDB error:', err));

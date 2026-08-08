@@ -103,7 +103,7 @@ const characterSchema = new mongoose.Schema({
   // buff có thời hạn (x2 exp, tăng sát thương...) xử lý phía client giống các potion cũ, không lưu DB).
   permBonus: {
     atk: { type: Number, default: 0 }, def: { type: Number, default: 0 }, hp: { type: Number, default: 0 },
-    spd: { type: Number, default: 0 }, crit: { type: Number, default: 0 },
+    ki: { type: Number, default: 0 }, spd: { type: Number, default: 0 }, crit: { type: Number, default: 0 },
   },
 }, { timestamps: true });
 

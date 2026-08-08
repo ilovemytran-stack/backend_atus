@@ -255,10 +255,15 @@ function guardianBossStatsFor(continent, mapLevel) {
   const avgAtk = mons.reduce((s, m) => s + m.baseAtk, 0) / mons.length;
   const avgDef = mons.reduce((s, m) => s + m.baseDef, 0) / mons.length;
   const lvGrow = 1 + (mapLevel - 1) * 0.12;
+  // statMult: hệ số nhân admin có thể chỉnh qua bảng quản trị (mặc định 1 = không đổi gì) — xem
+  // utils/gameOverrides.js. Boss guardian không có field hp/atk/def phẳng để sửa trực tiếp vì các
+  // số này vốn TÍNH RA từ quái trung bình của lục địa, nên dùng hệ số nhân thay vì field cố định.
+  const boss = BOSSES.find((b) => b.continent === continent.id);
+  const mult = (boss && boss.statMult) || { hp: 1, atk: 1, def: 1 };
   return {
-    hp: Math.round(avgHp * lvGrow * 14),
-    atk: Math.round(avgAtk * lvGrow * 2.6),
-    def: Math.round(avgDef * lvGrow * 2.2),
+    hp: Math.round(avgHp * lvGrow * 14 * mult.hp),
+    atk: Math.round(avgAtk * lvGrow * 2.6 * mult.atk),
+    def: Math.round(avgDef * lvGrow * 2.2 * mult.def),
     xp: Math.round((8 + mapLevel * 2) * 14),
     goldMin: Math.round((1.3 + mapLevel * 0.4) * 16),
     goldMax: Math.round((4 + mapLevel * 0.8) * 18),
@@ -372,7 +377,7 @@ const CONSUMABLES = {
   elixir_of_life: { id: 'elixir_of_life', name: 'Elixir of Life', desc: 'Hồi 100% HP + tăng 20% HP tối đa 600s', effect: { hp: 1.0, buffMaxHp: 0.2, buffSec: 600 }, price: 12, currency: 'gem' },
   might_potion: { id: 'might_potion', name: 'Might Potion', desc: 'Tăng 20% sát thương vật lý 300s', effect: { buffAtk: 0.2, buffSec: 300 }, price: 25, currency: 'gold' },
   swiftness_potion: { id: 'swiftness_potion', name: 'Swiftness Potion', desc: 'Tăng 15% tốc độ di chuyển 300s', effect: { buffSpd: 0.15, buffSec: 300 }, price: 20, currency: 'gold' },
-  teleport_scroll: { id: 'teleport_scroll', name: 'Truyền Tống Phù', desc: 'Di chuyển ngay sang một lục địa khác mà không cần đi bộ qua các map trung gian. Tiêu hao 1 lá khi dùng để đổi lục địa. Di chuyển giữa các map TRONG CÙNG 1 lục địa vẫn đi bộ tự do, không cần lá này.', effect: {}, price: 15, currency: 'gem' },
+  teleport_scroll: { id: 'teleport_scroll', name: 'Truyền Tống Phù', desc: 'Di chuyển ngay sang một lục địa khác mà không cần đi bộ qua các map trung gian. Mỗi lá dùng được 10 LẦN đổi lục địa (mua 1 lần dùng dần, không phải mua lại từng lượt). Di chuyển giữa các map TRONG CÙNG 1 lục địa vẫn đi bộ tự do, không cần lá này.', effect: {}, price: 15, currency: 'gem' },
   upgrade_stone_special: { id: 'upgrade_stone_special', name: 'Đá Nâng Trang Bị Đặc Biệt', desc: 'Nguyên liệu nâng cấp bộ trang bị đặc biệt (chỉ rơi từ Boss Thế Giới).', effect: {}, price: 0, currency: 'gem', dropOnly: true },
 };
 
@@ -396,7 +401,7 @@ RARITY_COLOR.special = '#E85C4C';
 // ---- Thần linh (gods) & Boss Thế Giới (world boss) — chỉ số + lịch spawn ----
 const GOD_SPAWN_INTERVAL_MS = (60 * 60 + 30) * 1000; // 60 phút 30 giây
 const GOD_LIFESPAN_MS = 15 * 60 * 1000;               // 15 phút
-const MEGA_BOSS_SPAWN_INTERVAL_MS = 45 * 60 * 1000;   // 45 phút
+const MEGA_BOSS_SPAWN_INTERVAL_MS = 45 * 60 * 1000;   // 45 phút (đúng như yêu cầu — giờ spawn 4 con cùng lúc ở 4 map cuối khác nhau nên không cần rút ngắn nữa)
 const MEGA_BOSS_IDLE_DESPAWN_MS = 14 * 60 * 1000;     // 14 phút không ai đánh / không đánh ai
 const GOD_GIFT_GOLD = [40, 90];
 const GOD_GIFT_GEM = [2, 5];
@@ -411,7 +416,9 @@ function godStatsFor(continent) {
 }
 function megaBossBaseStatsFor(continent) {
   const g = godStatsFor(continent);
-  return { hp: Math.round(g.hp * 1.45), atk: Math.round(g.atk * 1.45), def: g.def, skillCdBonus: 2.5 };
+  const boss = BOSSES.find((b) => b.id === 'b_chaoseraph');
+  const mult = (boss && boss.statMult) || { hp: 1, atk: 1, def: 1 };
+  return { hp: Math.round(g.hp * 1.45 * mult.hp), atk: Math.round(g.atk * 1.45 * mult.atk), def: Math.round(g.def * mult.def), skillCdBonus: 2.5 };
 }
 // form 1..5, mỗi form sau +15% sát thương / +5% giáp so với form liền trước (dồn tích)
 function megaBossFormStats(base, form) {
